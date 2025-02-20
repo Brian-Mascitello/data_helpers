@@ -1,0 +1,8 @@
+numpy==2.2.3
+pandas==2.2.3
+python-dateutil==2.9.0.post0
+pytz==2025.1
+RapidFuzz==3.12.1
+six==1.17.0
+thefuzz==0.22.1
+tzdata==2025.1
