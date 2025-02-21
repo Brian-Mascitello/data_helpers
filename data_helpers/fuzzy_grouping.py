@@ -1,7 +1,8 @@
+import itertools
+
+import pandas as pd
 from column_utils import get_unique_column_name
 from thefuzz import fuzz
-import itertools
-import pandas as pd
 
 
 def assign_similarity_groups(
