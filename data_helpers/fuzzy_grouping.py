@@ -1,8 +1,9 @@
 # %%
+import itertools
 from typing import Optional
+
 import pandas as pd
 from thefuzz import fuzz
-import itertools
 
 
 # %%
