@@ -1,6 +1,9 @@
 black==25.1.0
 click==8.1.8
 colorama==0.4.6
+dnspython==2.7.0
+email_validator==2.2.0
+idna==3.10
 isort==6.0.0
 mypy-extensions==1.0.0
 numpy==2.2.3
