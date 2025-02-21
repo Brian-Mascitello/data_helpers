@@ -1,6 +1,7 @@
 import itertools
-import pandas as pd
 import re
+
+import pandas as pd
 
 
 def get_unique_column_name(df: pd.DataFrame, column_name: str) -> str:
