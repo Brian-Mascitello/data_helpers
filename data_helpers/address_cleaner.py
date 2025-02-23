@@ -13,7 +13,7 @@ CITY_STATE_ZIP_PATTERN = re.compile(r",\s*[A-Z]{2}\s*\d{5}(?:-\d{4})?\s*$")
 ZIP_PATTERN = re.compile(r"^\d{5}(?:-\d{4})?$")
 # Updated phone pattern:
 # Matches standard 10-digit phone numbers with optional extension.
-# If an extension is present (e.g., "ext", "Ext", "x", etc.), at least one digit must follow.
+# If an extension is present (e.g., "ext", "Ext", "x"), it requires at least one digit.
 PHONE_PATTERN = re.compile(
     r"^\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}(?:\s*(?:ext[:\.]?\s*[0-9]+(?:[a-zA-Z0-9-]*)?))?$",
     re.IGNORECASE,
@@ -133,6 +133,7 @@ def calculate_max_counts(
     """
     Calculates the maximum number of occurrences per row for each component category,
     then caps them using ALLOWED_MAX. Also accounts for a fixed number of leading name fields.
+    Note: If a value is identified as 'city_state_zip', we increment the zip count so that a zip column is created.
     """
     categories = list(ALLOWED_MAX.keys())
     max_counts = {cat: 0 for cat in categories}
@@ -147,6 +148,9 @@ def calculate_max_counts(
             category: Optional[str] = detect_address_component(raw_value)
             if category in local_counts:
                 local_counts[category] += 1
+            # Count city_state_zip occurrences as zip occurrences too.
+            if category == "city_state_zip":
+                local_counts["zip"] += 1
         for cat in categories:
             max_counts[cat] = max(max_counts[cat], local_counts[cat])
 
