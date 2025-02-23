@@ -8,19 +8,13 @@ EMAIL_PATTERN = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
 WEBSITE_PATTERN = re.compile(
     r"^(https?://)?(www\.)?[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}(/.*)?$", re.IGNORECASE
 )
-# Updated city, state, and ZIP patterns to be more flexible
-CITY_STATE_ZIP_PATTERN = re.compile(r",\s*[A-Z]{2}\s*\d{5}(?:-\d{4})?\s*$")
-ZIP_PATTERN = re.compile(r"^\d{5}(?:-\d{4})?$")
-# Updated phone pattern:
-# Matches standard 10-digit phone numbers with optional extension.
-# If an extension is present (e.g., "ext", "Ext", "x"), it requires at least one digit.
-PHONE_PATTERN = re.compile(
-    r"^\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}(?:\s*(?:ext[:\.]?\s*[0-9]+(?:[a-zA-Z0-9-]*)?))?$",
-    re.IGNORECASE,
-)
-EXTRACT_CITY_STATE_ZIP_PATTERN = re.compile(
-    r"^(.*?),\s*([A-Z]{2})\s*(\d{5}(?:-\d{4})?)\s*$"
-)
+CITY_STATE_ZIP_PATTERN = re.compile(r",\s[A-Z]{2}\s\d{5}(-\d{4})?$")
+ZIP_PATTERN = re.compile(r"^\d{5}(-\d{4})?$")
+PHONE_PATTERN = re.compile(r"^\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}$")
+EXTRACT_CITY_STATE_ZIP_PATTERN = re.compile(r"^(.*),\s([A-Z]{2})\s(\d{5}(-\d{4})?)$")
+
+# New global CITY_PATTERN: matches values composed solely of letters, spaces, and periods.
+CITY_PATTERN = re.compile(r"^[A-Za-z\s\.]+$")
 
 # Set of valid US state abbreviations
 US_STATES = {
@@ -76,31 +70,34 @@ US_STATES = {
     "WY",
 }
 
-# Allowed maximum occurrences per row (except names)
+# Allowed maximum occurrences per row (except for leading names)
 ALLOWED_MAX = {
     "address": 4,
-    "phone": 4,
-    "zip": 1,
+    "city": 1,
     "email": 1,
+    "name": 1,
+    "phone": 4,
     "website": 1,
-    "company": 1,
+    "zip": 1,
 }
 
 
 def detect_address_component(value: str) -> Optional[str]:
     """
     Detects and classifies a value into an address component category.
+    Returns None for empty or "nan" values.
+    Uses CITY_PATTERN to classify values composed solely of letters, spaces, and periods as cities.
     """
     if value is None or pd.isna(value):
         return None
     value = value.strip()
-    if not value:
+    if not value or value.lower() == "nan":
         return None
-    if EMAIL_PATTERN.match(value):
+    elif EMAIL_PATTERN.match(value):
         return "email"
-    if WEBSITE_PATTERN.match(value):
+    elif WEBSITE_PATTERN.match(value):
         return "website"
-    if CITY_STATE_ZIP_PATTERN.search(value):
+    elif CITY_STATE_ZIP_PATTERN.search(value):
         return "city_state_zip"
     elif ZIP_PATTERN.match(value):
         return "zip"
@@ -112,8 +109,10 @@ def detect_address_component(value: str) -> Optional[str]:
         char.isalpha() for char in value
     ):
         return "address"
-    else:
+    elif CITY_PATTERN.match(value):
         return "city"
+    else:
+        return "misc"
 
 
 def extract_city_state_zip(value: str) -> Tuple[str, str, str]:
@@ -133,31 +132,31 @@ def calculate_max_counts(
     """
     Calculates the maximum number of occurrences per row for each component category,
     then caps them using ALLOWED_MAX. Also accounts for a fixed number of leading name fields.
-    Note: If a value is identified as 'city_state_zip', we increment the zip count so that a zip column is created.
+    Note: city_state_zip occurrences are also counted as ZIP occurrences.
     """
     categories = list(ALLOWED_MAX.keys())
     max_counts = {cat: 0 for cat in categories}
 
     for _, row in df.iterrows():
         local_counts = {cat: 0 for cat in categories}
-        # Skip the leading columns that are designated as names
+        # Skip the leading columns designated as names
         for idx, col in enumerate(columns_to_check):
             if idx < leading_name:
                 continue
             raw_value: str = str(row.get(col, "")).strip()
             category: Optional[str] = detect_address_component(raw_value)
-            if category in local_counts:
-                local_counts[category] += 1
-            # Count city_state_zip occurrences as zip occurrences too.
             if category == "city_state_zip":
+                # Count as a ZIP occurrence
                 local_counts["zip"] += 1
+            elif category in local_counts:
+                local_counts[category] += 1
         for cat in categories:
             max_counts[cat] = max(max_counts[cat], local_counts[cat])
 
     # Cap counts to ALLOWED_MAX values
     for cat, cap in ALLOWED_MAX.items():
         max_counts[cat] = min(max_counts[cat], cap)
-    # Add name count if applicable
+    # Add name count if applicable from leading columns
     if leading_name > 0:
         max_counts["name"] = leading_name
     return max_counts
@@ -226,7 +225,7 @@ def fix_row(
             if found["zip"] <= allowed_zip:
                 data_dict[f"zip{found['zip']}"] = zip_code
                 found["zip"] += 1
-        elif category in ["zip", "phone", "address", "email", "website", "company"]:
+        elif category in ["zip", "phone", "address", "email", "website", "name"]:
             allowed = sum(1 for c in dynamic_columns if c.startswith(category))
             if found[category] <= allowed:
                 data_dict[f"{category}{found[category]}"] = raw_value
@@ -234,6 +233,17 @@ def fix_row(
         elif category == "state":
             data_dict["state"] = raw_value
         elif category == "city":
+            data_dict["city"] = (
+                raw_value
+                if not data_dict["city"]
+                else (
+                    f"{data_dict['city']}, {raw_value}"
+                    if city_strategy == "concatenate"
+                    else raw_value
+                )
+            )
+        elif category == "misc":
+            # Fallback: treat misc as a potential city value.
             data_dict["city"] = (
                 raw_value
                 if not data_dict["city"]
