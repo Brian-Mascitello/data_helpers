@@ -164,18 +164,20 @@ def calculate_max_counts(
     return max_counts
 
 
-def generate_dynamic_columns(max_counts: Dict[str, int]) -> List[str]:
+def generate_dynamic_columns(
+    max_counts: Dict[str, int], suffix_str: str = "_fix"
+) -> List[str]:
     """
-    Generates dynamic column names in the following fixed order:
+    Generates dynamic column names in the fixed order:
     name, address, city, state, zip, phone, email, website.
-    For each category, even if the maximum count is 1, a trailing "1" is appended.
+    For each category, even if the maximum count is 1, the column name ends with a trailing "1" plus suffix.
     """
     order = ["name", "address", "city", "state", "zip", "phone", "email", "website"]
     dynamic_columns = []
     for cat in order:
-        count = max_counts.get(cat, 1)  # default to 1 if not explicitly in max_counts
+        count = max_counts.get(cat, 1)
         for i in range(1, count + 1):
-            dynamic_columns.append(f"{cat}{i}")
+            dynamic_columns.append(f"{cat}{i}{suffix_str}")
     return dynamic_columns
 
 
@@ -185,27 +187,30 @@ def fix_row(
     dynamic_columns: List[str],
     city_strategy: str = "first",
     leading_name: int = 0,
+    suffix_str: str = "_fix",
 ) -> pd.Series:
     """
     Processes a single row, classifies address components, and assigns data dynamically.
     The first `leading_name` columns are treated as names.
-
-    Modification: If a city is extracted from a city_state_zip value, a flag is set so that later
-    plain city or misc values do not override it when using the "first" strategy.
+    If a city is extracted from a city_state_zip value, it is preserved as the first city when using the "first" strategy.
     """
-    # Initialize a dictionary with keys in the order defined by dynamic_columns
+    # Initialize dictionary with keys in the order defined by dynamic_columns.
     data_dict: Dict[str, str] = {col: "" for col in dynamic_columns}
-    # Initialize counters for each component from ALLOWED_MAX
+    # Initialize counters for each component.
     found = {cat: 1 for cat in ALLOWED_MAX.keys()}
     found["name"] = 1
-    city_from_csz = False  # flag indicating city came from a city_state_zip
+    city_from_csz = (
+        False  # flag indicating that a city was found from a city_state_zip value
+    )
+
+    # Define key names using the suffix.
+    city_key = f"city1{suffix_str}"
+    state_key = f"state1{suffix_str}"
 
     for idx, col in enumerate(columns_to_check):
         raw_value: str = str(row.get(col, "")).strip()
-
-        # Process leading columns as names
         if idx < leading_name:
-            key = f"name{idx+1}"
+            key = f"name{idx+1}{suffix_str}"
             if raw_value:
                 data_dict[key] = raw_value
             continue
@@ -215,61 +220,58 @@ def fix_row(
         if category == "city_state_zip":
             city, state, zip_code = extract_city_state_zip(raw_value)
             # Always treat the city from city_state_zip as primary.
-            if not data_dict["city1"]:
-                data_dict["city1"] = city
+            if not data_dict[city_key]:
+                data_dict[city_key] = city
             else:
                 if city_strategy == "concatenate":
-                    data_dict["city1"] = f"{city}, {data_dict['city1']}"
+                    data_dict[city_key] = f"{city}, {data_dict[city_key]}"
                 elif city_strategy in ["first", "last"]:
-                    data_dict["city1"] = city
-            # For state, assign to state1
-            data_dict["state1"] = state
+                    data_dict[city_key] = city
+            data_dict[state_key] = state
 
             allowed_zip = sum(1 for c in dynamic_columns if c.startswith("zip"))
             if found["zip"] <= allowed_zip:
-                data_dict[f"zip{found['zip']}"] = zip_code
+                data_dict[f"zip{found['zip']}{suffix_str}"] = zip_code
                 found["zip"] += 1
             city_from_csz = True
 
         elif category == "city":
-            # If a city from city_state_zip was already found and strategy is "first", skip updating.
-            if not data_dict["city1"]:
-                data_dict["city1"] = raw_value
+            if not data_dict[city_key]:
+                data_dict[city_key] = raw_value
             else:
                 if city_from_csz:
                     if city_strategy == "concatenate":
-                        data_dict["city1"] = f"{data_dict['city1']}, {raw_value}"
-                    # Otherwise (strategy "first"), do nothing.
+                        data_dict[city_key] = f"{data_dict[city_key]}, {raw_value}"
+                    # For "first", do nothing.
                 else:
                     if city_strategy == "concatenate":
-                        data_dict["city1"] = f"{data_dict['city1']}, {raw_value}"
+                        data_dict[city_key] = f"{data_dict[city_key]}, {raw_value}"
                     elif city_strategy == "last":
-                        data_dict["city1"] = raw_value
+                        data_dict[city_key] = raw_value
 
         elif category == "misc":
-            # Fallback: treat misc as a potential city value.
-            if not data_dict["city1"]:
-                data_dict["city1"] = raw_value
+            if not data_dict[city_key]:
+                data_dict[city_key] = raw_value
             else:
                 if city_from_csz:
                     if city_strategy == "concatenate":
-                        data_dict["city1"] = f"{data_dict['city1']}, {raw_value}"
+                        data_dict[city_key] = f"{data_dict[city_key]}, {raw_value}"
                 else:
                     if city_strategy == "concatenate":
-                        data_dict["city1"] = f"{data_dict['city1']}, {raw_value}"
+                        data_dict[city_key] = f"{data_dict[city_key]}, {raw_value}"
                     elif city_strategy == "last":
-                        data_dict["city1"] = raw_value
+                        data_dict[city_key] = raw_value
 
         elif category == "state":
-            data_dict["state1"] = raw_value
+            data_dict[state_key] = raw_value
 
         elif category in ["zip", "phone", "address", "email", "website", "name"]:
             allowed = sum(1 for c in dynamic_columns if c.startswith(category))
             if found[category] <= allowed:
-                data_dict[f"{category}{found[category]}"] = raw_value
+                key = f"{category}{found[category]}{suffix_str}"
+                data_dict[key] = raw_value
                 found[category] += 1
 
-    # Return a Series with keys in the order of dynamic_columns
     ordered_data = {col: data_dict[col] for col in dynamic_columns}
     return pd.Series(ordered_data)
 
@@ -280,27 +282,34 @@ def clean_addresses_df(
     city_strategy: str = "first",
     append_columns: bool = False,
     leading_name: int = 0,
+    suffix_str: str = "_fix",
 ) -> pd.DataFrame:
     """
     Cleans address components in a pandas DataFrame and returns the modified DataFrame.
     If append_columns is True, the new fixed columns are appended to the original DataFrame.
     The parameter leading_name indicates how many leading columns to treat as names.
+    The parameter suffix_str is appended to each generated column name.
     """
     max_counts = calculate_max_counts(df, columns_to_check, leading_name)
-    dynamic_columns = generate_dynamic_columns(max_counts)
-    fixed_df = df.apply(
+    dynamic_columns = generate_dynamic_columns(max_counts, suffix_str)
+    fix_df = df.apply(
         lambda row: fix_row(
-            row, columns_to_check, dynamic_columns, city_strategy, leading_name
+            row,
+            columns_to_check,
+            dynamic_columns,
+            city_strategy,
+            leading_name,
+            suffix_str,
         ),
         axis=1,
     )
     if append_columns:
         result_df = pd.concat(
-            [df.reset_index(drop=True), fixed_df.reset_index(drop=True)], axis=1
+            [df.reset_index(drop=True), fix_df.reset_index(drop=True)], axis=1
         )
         return result_df
     else:
-        return fixed_df
+        return fix_df
 
 
 def clean_addresses(
@@ -310,18 +319,20 @@ def clean_addresses(
     city_strategy: str = "first",
     append_columns: bool = False,
     leading_name: int = 0,
+    suffix_str: str = "_fix",
 ) -> pd.DataFrame:
     """
     Loads a CSV, cleans only the specified columns, and saves the cleaned data to a new CSV.
     If append_columns is True, the new fixed columns are appended to the original data.
     The parameter leading_name indicates how many leading columns to treat as names.
+    The parameter suffix_str is appended to each generated column name.
     """
     df: pd.DataFrame = pd.read_csv(input_csv, dtype=str)
-    fixed_df = clean_addresses_df(
-        df, columns_to_check, city_strategy, append_columns, leading_name
+    fix_df = clean_addresses_df(
+        df, columns_to_check, city_strategy, append_columns, leading_name, suffix_str
     )
-    fixed_df.to_csv(output_csv, index=False)
-    return fixed_df
+    fix_df.to_csv(output_csv, index=False)
+    return fix_df
 
 
 if __name__ == "__main__":
@@ -337,5 +348,6 @@ if __name__ == "__main__":
         city_strategy="first",
         append_columns=True,
         leading_name=1,
+        suffix_str="_fix",
     )
     print(f"Cleaned data saved to {output_file}")
