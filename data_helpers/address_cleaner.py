@@ -78,6 +78,7 @@ ALLOWED_MAX = {
     "email": 1,
     "name": 1,
     "phone": 4,
+    "state": 1,
     "website": 1,
     "zip": 1,
 }
@@ -157,7 +158,7 @@ def calculate_max_counts(
     # Cap counts to ALLOWED_MAX values
     for cat, cap in ALLOWED_MAX.items():
         max_counts[cat] = min(max_counts[cat], cap)
-    # Add name count if applicable from leading columns
+    # Override name count with leading_name if provided
     if leading_name > 0:
         max_counts["name"] = leading_name
     return max_counts
@@ -165,20 +166,16 @@ def calculate_max_counts(
 
 def generate_dynamic_columns(max_counts: Dict[str, int]) -> List[str]:
     """
-    Generates dynamic column names based on maximum counts.
-    Names come first (if present), then city and state, followed by other categories.
-    Note: 'city' and 'state' are added manually and are skipped in the loop.
+    Generates dynamic column names in the following fixed order:
+    name, address, city, state, zip, phone, email, website.
+    For each category, even if the maximum count is 1, a trailing "1" is appended.
     """
+    order = ["name", "address", "city", "state", "zip", "phone", "email", "website"]
     dynamic_columns = []
-    if "name" in max_counts and max_counts["name"] > 0:
-        dynamic_columns.extend([f"name{i}" for i in range(1, max_counts["name"] + 1)])
-    dynamic_columns.extend(["city", "state"])
-    for category in sorted(max_counts.keys()):
-        if category in {"name", "city", "state"}:
-            continue
-        dynamic_columns.extend(
-            [f"{category}{i}" for i in range(1, max_counts[category] + 1)]
-        )
+    for cat in order:
+        count = max_counts.get(cat, 1)  # default to 1 if not explicitly in max_counts
+        for i in range(1, count + 1):
+            dynamic_columns.append(f"{cat}{i}")
     return dynamic_columns
 
 
@@ -193,14 +190,15 @@ def fix_row(
     Processes a single row, classifies address components, and assigns data dynamically.
     The first `leading_name` columns are treated as names.
 
-    Modification: if a city is extracted from a city_state_zip value, we set a flag (city_from_csz)
-    so that later city (or misc) values do not override it unless concatenation is desired.
+    Modification: If a city is extracted from a city_state_zip value, a flag is set so that later
+    plain city or misc values do not override it when using the "first" strategy.
     """
+    # Initialize a dictionary with keys in the order defined by dynamic_columns
     data_dict: Dict[str, str] = {col: "" for col in dynamic_columns}
-    # Initialize counters for each component
+    # Initialize counters for each component from ALLOWED_MAX
     found = {cat: 1 for cat in ALLOWED_MAX.keys()}
     found["name"] = 1
-    city_from_csz = False
+    city_from_csz = False  # flag indicating city came from a city_state_zip
 
     for idx, col in enumerate(columns_to_check):
         raw_value: str = str(row.get(col, "")).strip()
@@ -217,15 +215,15 @@ def fix_row(
         if category == "city_state_zip":
             city, state, zip_code = extract_city_state_zip(raw_value)
             # Always treat the city from city_state_zip as primary.
-            if not data_dict["city"]:
-                data_dict["city"] = city
+            if not data_dict["city1"]:
+                data_dict["city1"] = city
             else:
                 if city_strategy == "concatenate":
-                    # Prepend to ensure it appears first.
-                    data_dict["city"] = f"{city}, {data_dict['city']}"
+                    data_dict["city1"] = f"{city}, {data_dict['city1']}"
                 elif city_strategy in ["first", "last"]:
-                    data_dict["city"] = city
-            data_dict["state"] = state
+                    data_dict["city1"] = city
+            # For state, assign to state1
+            data_dict["state1"] = state
 
             allowed_zip = sum(1 for c in dynamic_columns if c.startswith("zip"))
             if found["zip"] <= allowed_zip:
@@ -235,32 +233,35 @@ def fix_row(
 
         elif category == "city":
             # If a city from city_state_zip was already found and strategy is "first", skip updating.
-            if not data_dict["city"]:
-                data_dict["city"] = raw_value
+            if not data_dict["city1"]:
+                data_dict["city1"] = raw_value
             else:
                 if city_from_csz:
                     if city_strategy == "concatenate":
-                        data_dict["city"] = f"{data_dict['city']}, {raw_value}"
-                    # Otherwise, if strategy is "first", do nothing.
+                        data_dict["city1"] = f"{data_dict['city1']}, {raw_value}"
+                    # Otherwise (strategy "first"), do nothing.
                 else:
                     if city_strategy == "concatenate":
-                        data_dict["city"] = f"{data_dict['city']}, {raw_value}"
+                        data_dict["city1"] = f"{data_dict['city1']}, {raw_value}"
                     elif city_strategy == "last":
-                        data_dict["city"] = raw_value
+                        data_dict["city1"] = raw_value
 
         elif category == "misc":
             # Fallback: treat misc as a potential city value.
-            if not data_dict["city"]:
-                data_dict["city"] = raw_value
+            if not data_dict["city1"]:
+                data_dict["city1"] = raw_value
             else:
                 if city_from_csz:
                     if city_strategy == "concatenate":
-                        data_dict["city"] = f"{data_dict['city']}, {raw_value}"
+                        data_dict["city1"] = f"{data_dict['city1']}, {raw_value}"
                 else:
                     if city_strategy == "concatenate":
-                        data_dict["city"] = f"{data_dict['city']}, {raw_value}"
+                        data_dict["city1"] = f"{data_dict['city1']}, {raw_value}"
                     elif city_strategy == "last":
-                        data_dict["city"] = raw_value
+                        data_dict["city1"] = raw_value
+
+        elif category == "state":
+            data_dict["state1"] = raw_value
 
         elif category in ["zip", "phone", "address", "email", "website", "name"]:
             allowed = sum(1 for c in dynamic_columns if c.startswith(category))
@@ -268,10 +269,9 @@ def fix_row(
                 data_dict[f"{category}{found[category]}"] = raw_value
                 found[category] += 1
 
-        elif category == "state":
-            data_dict["state"] = raw_value
-
-    return pd.Series(dict(sorted(data_dict.items())))
+    # Return a Series with keys in the order of dynamic_columns
+    ordered_data = {col: data_dict[col] for col in dynamic_columns}
+    return pd.Series(ordered_data)
 
 
 def clean_addresses_df(
