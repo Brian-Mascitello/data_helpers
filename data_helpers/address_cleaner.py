@@ -8,10 +8,19 @@ EMAIL_PATTERN = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
 WEBSITE_PATTERN = re.compile(
     r"^(https?://)?(www\.)?[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}(/.*)?$", re.IGNORECASE
 )
-CITY_STATE_ZIP_PATTERN = re.compile(r",\s[A-Z]{2}\s\d{5}(-\d{4})?$")
-ZIP_PATTERN = re.compile(r"^\d{5}(-\d{4})?$")
-PHONE_PATTERN = re.compile(r"^\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}$")
-EXTRACT_CITY_STATE_ZIP_PATTERN = re.compile(r"^(.*),\s([A-Z]{2})\s(\d{5}(-\d{4})?)$")
+# Updated city, state, and ZIP patterns to be more flexible
+CITY_STATE_ZIP_PATTERN = re.compile(r",\s*[A-Z]{2}\s*\d{5}(?:-\d{4})?\s*$")
+ZIP_PATTERN = re.compile(r"^\d{5}(?:-\d{4})?$")
+# Updated phone pattern:
+# Matches standard 10-digit phone numbers with optional extension.
+# If an extension is present (e.g., "ext", "Ext", "x", etc.), at least one digit must follow.
+PHONE_PATTERN = re.compile(
+    r"^\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}(?:\s*(?:ext[:\.]?\s*[0-9]+(?:[a-zA-Z0-9-]*)?))?$",
+    re.IGNORECASE,
+)
+EXTRACT_CITY_STATE_ZIP_PATTERN = re.compile(
+    r"^(.*?),\s*([A-Z]{2})\s*(\d{5}(?:-\d{4})?)\s*$"
+)
 
 # Set of valid US state abbreviations
 US_STATES = {
