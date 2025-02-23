@@ -4,17 +4,18 @@ from typing import Dict, List, Optional, Tuple
 import pandas as pd
 
 # Improved regex patterns
+CITY_PATTERN = re.compile(r"^[A-Za-z\s\.]+$")
+CITY_STATE_ZIP_PATTERN = re.compile(r",\s[A-Z]{2}\s\d{5}(-\d{4})?$")
 EMAIL_PATTERN = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
+EXTRACT_CITY_STATE_ZIP_PATTERN = re.compile(r"^(.*),\s([A-Z]{2})\s(\d{5}(-\d{4})?)$")
+PHONE_PATTERN = re.compile(
+    r"^\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}(?:\s*(?:ext[:\.]?\s*[0-9]+(?:[a-zA-Z0-9-]*)?))?$",
+    re.IGNORECASE,
+)
 WEBSITE_PATTERN = re.compile(
     r"^(https?://)?(www\.)?[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}(/.*)?$", re.IGNORECASE
 )
-CITY_STATE_ZIP_PATTERN = re.compile(r",\s[A-Z]{2}\s\d{5}(-\d{4})?$")
 ZIP_PATTERN = re.compile(r"^\d{5}(-\d{4})?$")
-PHONE_PATTERN = re.compile(r"^\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}$")
-EXTRACT_CITY_STATE_ZIP_PATTERN = re.compile(r"^(.*),\s([A-Z]{2})\s(\d{5}(-\d{4})?)$")
-
-# New global CITY_PATTERN: matches values composed solely of letters, spaces, and periods.
-CITY_PATTERN = re.compile(r"^[A-Za-z\s\.]+$")
 
 # Set of valid US state abbreviations
 US_STATES = {
@@ -166,13 +167,14 @@ def generate_dynamic_columns(max_counts: Dict[str, int]) -> List[str]:
     """
     Generates dynamic column names based on maximum counts.
     Names come first (if present), then city and state, followed by other categories.
+    Note: 'city' and 'state' are added manually and are skipped in the loop.
     """
     dynamic_columns = []
     if "name" in max_counts and max_counts["name"] > 0:
         dynamic_columns.extend([f"name{i}" for i in range(1, max_counts["name"] + 1)])
     dynamic_columns.extend(["city", "state"])
     for category in sorted(max_counts.keys()):
-        if category == "name":
+        if category in {"name", "city", "state"}:
             continue
         dynamic_columns.extend(
             [f"{category}{i}" for i in range(1, max_counts[category] + 1)]
@@ -190,11 +192,15 @@ def fix_row(
     """
     Processes a single row, classifies address components, and assigns data dynamically.
     The first `leading_name` columns are treated as names.
+
+    Modification: if a city is extracted from a city_state_zip value, we set a flag (city_from_csz)
+    so that later city (or misc) values do not override it unless concatenation is desired.
     """
     data_dict: Dict[str, str] = {col: "" for col in dynamic_columns}
     # Initialize counters for each component
     found = {cat: 1 for cat in ALLOWED_MAX.keys()}
     found["name"] = 1
+    city_from_csz = False
 
     for idx, col in enumerate(columns_to_check):
         raw_value: str = str(row.get(col, "")).strip()
@@ -210,49 +216,60 @@ def fix_row(
 
         if category == "city_state_zip":
             city, state, zip_code = extract_city_state_zip(raw_value)
-            data_dict["city"] = (
-                city
-                if not data_dict["city"]
-                else (
-                    f"{data_dict['city']}, {city}"
-                    if city_strategy == "concatenate"
-                    else city
-                )
-            )
+            # Always treat the city from city_state_zip as primary.
+            if not data_dict["city"]:
+                data_dict["city"] = city
+            else:
+                if city_strategy == "concatenate":
+                    # Prepend to ensure it appears first.
+                    data_dict["city"] = f"{city}, {data_dict['city']}"
+                elif city_strategy in ["first", "last"]:
+                    data_dict["city"] = city
             data_dict["state"] = state
 
             allowed_zip = sum(1 for c in dynamic_columns if c.startswith("zip"))
             if found["zip"] <= allowed_zip:
                 data_dict[f"zip{found['zip']}"] = zip_code
                 found["zip"] += 1
+            city_from_csz = True
+
+        elif category == "city":
+            # If a city from city_state_zip was already found and strategy is "first", skip updating.
+            if not data_dict["city"]:
+                data_dict["city"] = raw_value
+            else:
+                if city_from_csz:
+                    if city_strategy == "concatenate":
+                        data_dict["city"] = f"{data_dict['city']}, {raw_value}"
+                    # Otherwise, if strategy is "first", do nothing.
+                else:
+                    if city_strategy == "concatenate":
+                        data_dict["city"] = f"{data_dict['city']}, {raw_value}"
+                    elif city_strategy == "last":
+                        data_dict["city"] = raw_value
+
+        elif category == "misc":
+            # Fallback: treat misc as a potential city value.
+            if not data_dict["city"]:
+                data_dict["city"] = raw_value
+            else:
+                if city_from_csz:
+                    if city_strategy == "concatenate":
+                        data_dict["city"] = f"{data_dict['city']}, {raw_value}"
+                else:
+                    if city_strategy == "concatenate":
+                        data_dict["city"] = f"{data_dict['city']}, {raw_value}"
+                    elif city_strategy == "last":
+                        data_dict["city"] = raw_value
+
         elif category in ["zip", "phone", "address", "email", "website", "name"]:
             allowed = sum(1 for c in dynamic_columns if c.startswith(category))
             if found[category] <= allowed:
                 data_dict[f"{category}{found[category]}"] = raw_value
                 found[category] += 1
+
         elif category == "state":
             data_dict["state"] = raw_value
-        elif category == "city":
-            data_dict["city"] = (
-                raw_value
-                if not data_dict["city"]
-                else (
-                    f"{data_dict['city']}, {raw_value}"
-                    if city_strategy == "concatenate"
-                    else raw_value
-                )
-            )
-        elif category == "misc":
-            # Fallback: treat misc as a potential city value.
-            data_dict["city"] = (
-                raw_value
-                if not data_dict["city"]
-                else (
-                    f"{data_dict['city']}, {raw_value}"
-                    if city_strategy == "concatenate"
-                    else raw_value
-                )
-            )
 
     return pd.Series(dict(sorted(data_dict.items())))
 
