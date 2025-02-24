@@ -116,45 +116,77 @@ def token_sort_ratio(s1: str, s2: str) -> int:
     return fuzz.token_sort_ratio(s1, s2)
 
 
-def compare_dataframe_columns(df: pd.DataFrame, col1: str, col2: str) -> pd.DataFrame:
-    """Compares two columns in a DataFrame using multiple fuzzy methods."""
+def normalize_text(text) -> str:
+    """Cleans text by stripping whitespace and converting to lowercase.
+    
+    If the input is missing (NaN) or not a string, it returns an empty string.
+    """
+    if pd.isna(text) or text is None:
+        return ""
+    # Convert non-string values to string before processing.
+    text = str(text)
+    return text.strip().lower()
+
+
+def compare_dataframe_columns(
+    df: pd.DataFrame, col1: str, col2: str, normalize: bool = False
+) -> pd.DataFrame:
+    """
+    Compares two DataFrame columns using multiple fuzzy methods.
+    
+    If normalize is True, temporary columns (col1_normalized and col2_normalized)
+    are created to hold cleaned text (lowercase and stripped) before performing comparisons.
+    """
+    if normalize:
+        norm_col1 = col1 + "_normalized"
+        norm_col2 = col2 + "_normalized"
+        df[norm_col1] = df[col1].apply(normalize_text)
+        df[norm_col2] = df[col2].apply(normalize_text)
+    else:
+        norm_col1 = col1
+        norm_col2 = col2
+
     df["contains_string"] = df.apply(
-        lambda x: contains_string(x[col1], x[col2]), axis=1
+        lambda x: contains_string(x[norm_col1], x[norm_col2]), axis=1
     )
     df["cosine_similarity"] = df.apply(
-        lambda x: cosine_similarity_score(x[col1], x[col2]), axis=1
+        lambda x: cosine_similarity_score(x[norm_col1], x[norm_col2]), axis=1
     )
     df["hamming_distance"] = df.apply(
-        lambda x: hamming_distance(x[col1], x[col2], pad=True), axis=1
+        lambda x: hamming_distance(x[norm_col1], x[norm_col2], pad=True), axis=1
     )
     df["jaccard_similarity"] = df.apply(
-        lambda x: jaccard_similarity(x[col1], x[col2]), axis=1
+        lambda x: jaccard_similarity(x[norm_col1], x[norm_col2]), axis=1
     )
     df["jaro_similarity"] = df.apply(
-        lambda x: jaro_similarity(x[col1], x[col2]), axis=1
+        lambda x: jaro_similarity(x[norm_col1], x[norm_col2]), axis=1
     )
     df["jaro_winkler_similarity"] = df.apply(
-        lambda x: jaro_winkler_similarity(x[col1], x[col2]), axis=1
+        lambda x: jaro_winkler_similarity(x[norm_col1], x[norm_col2]), axis=1
     )
     df["levenshtein_ratio"] = df.apply(
-        lambda x: levenshtein_ratio(x[col1], x[col2]), axis=1
+        lambda x: levenshtein_ratio(x[norm_col1], x[norm_col2]), axis=1
     )
     df["longest_common_subsequence"] = df.apply(
-        lambda x: longest_common_subsequence(x[col1], x[col2]), axis=1
+        lambda x: longest_common_subsequence(x[norm_col1], x[norm_col2]), axis=1
     )
     df["metaphone_match"] = df.apply(
-        lambda x: metaphone_similarity(x[col1], x[col2]), axis=1
+        lambda x: metaphone_similarity(x[norm_col1], x[norm_col2]), axis=1
     )
-    df["nysiis_match"] = df.apply(lambda x: nysiis_similarity(x[col1], x[col2]), axis=1)
-    df["partial_ratio"] = df.apply(lambda x: partial_ratio(x[col1], x[col2]), axis=1)
+    df["nysiis_match"] = df.apply(
+        lambda x: nysiis_similarity(x[norm_col1], x[norm_col2]), axis=1
+    )
+    df["partial_ratio"] = df.apply(
+        lambda x: partial_ratio(x[norm_col1], x[norm_col2]), axis=1
+    )
     df["soundex_match"] = df.apply(
-        lambda x: soundex_similarity(x[col1], x[col2]), axis=1
+        lambda x: soundex_similarity(x[norm_col1], x[norm_col2]), axis=1
     )
     df["token_set_ratio"] = df.apply(
-        lambda x: token_set_ratio(x[col1], x[col2]), axis=1
+        lambda x: token_set_ratio(x[norm_col1], x[norm_col2]), axis=1
     )
     df["token_sort_ratio"] = df.apply(
-        lambda x: token_sort_ratio(x[col1], x[col2]), axis=1
+        lambda x: token_sort_ratio(x[norm_col1], x[norm_col2]), axis=1
     )
 
     return df
@@ -163,7 +195,7 @@ def compare_dataframe_columns(df: pd.DataFrame, col1: str, col2: str) -> pd.Data
 def main() -> None:
     """Example usage of the fuzzy comparison functions."""
     data = {
-        "col1": ["apple pie", "banana smoothie", "chocolate cake", "vanilla ice cream"],
+        "col1": [" apple pie", "BANANA smoothie", "chocolate cake", "Vanilla ice cream "],
         "col2": [
             "apple tart",
             "banana shake",
@@ -172,7 +204,9 @@ def main() -> None:
         ],
     }
     df = pd.DataFrame(data)
-    df = compare_dataframe_columns(df, "col1", "col2")
+    
+    # Toggle normalization on or off as desired.
+    df = compare_dataframe_columns(df, "col1", "col2", normalize=True)
     print(df)
 
 
