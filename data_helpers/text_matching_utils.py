@@ -11,54 +11,100 @@ from thefuzz import fuzz
 
 def contains_string(s1: str, s2: str) -> bool:
     """Checks if one string is contained in the other.
+
     This function verifies whether one string is a complete substring of the other.
-    Best use case: Exact substring matching."""
+
+    Best use case: Exact substring matching.
+    """
     return s1 in s2 or s2 in s1
 
 
 def cosine_similarity_score(s1: str, s2: str) -> float:
     """Returns the cosine similarity between two text strings.
+
     This function uses TF-IDF vectorization to compare textual similarity.
-    Best use case: Comparing long text passages, documents, or descriptions."""
+
+    Best use case: Comparing long text passages, documents, or descriptions.
+    """
     vectorizer = TfidfVectorizer().fit_transform([s1, s2])
     vectors = vectorizer.toarray()
     return cosine_similarity([vectors[0]], [vectors[1]])[0][0]
 
 
-def hamming_distance(s1: str, s2: str, pad: bool = False) -> Optional[int]:
-    """Returns the Hamming distance between two strings.
-    When pad is False, the function returns None if the strings have unequal lengths.
-    When pad is True, the shorter string is padded with a null character ('\0')
-    to match the length of the longer string.
-    Best use case: Comparing fixed-length strings such as DNA sequences or binary strings.
+def damerau_levenshtein_distance(s1: str, s2: str) -> int:
+    """Returns the Damerau-Levenshtein distance between two strings.
+    
+    This measures the minimum number of operations (insertions, deletions, substitutions, 
+    or transpositions) required to transform one string into another.
+
+    Best use case: Identifying near-matches where transpositions are common, such as typos.
     """
-    if pad:
-        max_len = max(len(s1), len(s2))
-        s1_padded = s1.ljust(max_len, "\0")
-        s2_padded = s2.ljust(max_len, "\0")
-        return sum(ch1 != ch2 for ch1, ch2 in zip(s1_padded, s2_padded))
-    else:
-        if len(s1) != len(s2):
-            return None  # Hamming distance is only defined for equal-length strings
-        return jf.hamming_distance(s1, s2)
+    return jf.damerau_levenshtein_distance(s1, s2)
+
+
+def hamming_distance(s1: str, s2: str, classic: bool = False) -> Optional[int]:
+    """Returns the Hamming distance between two strings.
+    
+    When classic=True, the function returns None if the strings have unequal lengths,
+    enforcing the traditional definition of Hamming distance.
+    
+    When classic=False (default), extra characters in the longer string are considered differing,
+    following Jellyfish's implementation.
+
+    Best use case: Comparing fixed-length strings where only substitutions matter, such as
+    detecting errors in binary data, DNA sequences, or cryptographic hashes.
+    """
+    if classic and len(s1) != len(s2):
+        return None  # Classic Hamming distance requires equal-length strings
+    
+    return jf.hamming_distance(s1, s2)
+
+
+def hamming_distance_percent(s1: str, s2: str, classic: bool = False) -> Optional[float]:
+    """Returns the percentage similarity (0-100) based on Hamming distance.
+    
+    When classic=True, the function returns None if the strings have unequal lengths.
+    When classic=False (default), extra characters in the longer string are considered differing.
+    
+    The percentage similarity is calculated as:
+        (1 - Hamming Distance / Max Length) * 100
+        
+    Best use case: Measuring similarity between equal-length strings (classic=True) or 
+    considering extra characters as differences (classic=False).
+    """
+    distance = hamming_distance(s1, s2, classic)
+    if distance is None:
+        return None  # Classic Hamming distance requires equal-length strings
+    
+    max_length = max(len(s1), len(s2))
+    if max_length == 0:
+        return 100.0  # Both strings are empty, so they are identical
+    
+    return (1 - (distance / max_length)) * 100
 
 
 def jaccard_similarity(s1: str, s2: str) -> float:
     """Returns Jaccard similarity score between two strings.
+
     This function calculates the Jaccard index, which measures similarity by comparing the intersection and union of words in two strings.
-    Best use case: Word-based similarity, useful for documents or names."""
+
+    Best use case: Word-based similarity, useful for documents or names.
+    """
     set1, set2 = set(s1.split()), set(s2.split())
     return len(set1 & set2) / len(set1 | set2) if len(set1 | set2) > 0 else 0
 
 
 def jaro_similarity(s1: str, s2: str) -> float:
     """Returns the Jaro similarity score between two strings.
-    Best use case: Comparing short strings, such as names."""
+
+    Best use case: Comparing short strings, such as names.
+    """
     return jf.jaro_similarity(s1, s2)
 
 
 def jaro_winkler_similarity(s1: str, s2: str) -> float:
     """Returns the Jaro-Winkler similarity score between two strings.
+
     Best use case: Comparing short strings with a focus on common prefixes, useful for name matching.
     """
     return jf.jaro_winkler_similarity(s1, s2)
@@ -66,20 +112,28 @@ def jaro_winkler_similarity(s1: str, s2: str) -> float:
 
 def levenshtein_ratio(s1: str, s2: str) -> int:
     """Returns the Levenshtein similarity ratio (0-100).
-    This function computes the Levenshtein distance, which quantifies how different two strings are based on character insertions, deletions, and substitutions.
-    Best use case: General similarity, sensitive to small changes."""
+
+    This function computes the Levenshtein distance, which quantifies how different two strings are
+    based on character insertions, deletions, and substitutions.
+
+    Best use case: General similarity, sensitive to small changes.
+    """
     return fuzz.ratio(s1, s2)
 
 
 def longest_common_subsequence(s1: str, s2: str) -> int:
     """Returns the length of the longest common subsequence.
+
     This function finds the longest sequence of characters appearing in both strings in order.
-    Best use case: Identifying shared character sequences, useful for name matching."""
+
+    Best use case: Identifying shared character sequences, useful for name matching.
+    """
     return SequenceMatcher(None, s1, s2).find_longest_match(0, len(s1), 0, len(s2)).size
 
 
 def longest_common_subsequence_percent(s1: str, s2: str) -> float:
     """Returns the percentage similarity (0-100) based on the longest common contiguous subsequence.
+
     Best use case: Comparing the degree of shared contiguous sequences relative to the longer string.
     """
     match_length = longest_common_subsequence(s1, s2)
@@ -91,40 +145,56 @@ def longest_common_subsequence_percent(s1: str, s2: str) -> float:
 
 def metaphone_similarity(s1: str, s2: str) -> bool:
     """Checks if two words have the same Metaphone encoding.
-    Best use case: Phonetic matching for English words and names."""
+
+    Best use case: Phonetic matching for English words and names.
+    """
     return jf.metaphone(s1) == jf.metaphone(s2)
 
 
 def nysiis_similarity(s1: str, s2: str) -> bool:
     """Checks if two words have the same NYSIIS encoding.
-    Best use case: Phonetic matching for names, better suited for non-English names."""
+
+    Best use case: Phonetic matching for names, better suited for non-English names.
+    """
     return jf.nysiis(s1) == jf.nysiis(s2)
 
 
 def partial_ratio(s1: str, s2: str) -> int:
     """Returns the Partial Ratio similarity (0-100).
-    This function finds the best matching substring in a longer string and calculates the similarity score based on that subset.
-    Best use case: One string is a substring of another."""
+
+    This function finds the best matching substring in a longer string and calculates
+    the similarity score based on that subset.
+
+    Best use case: One string is a substring of another.
+    """
     return fuzz.partial_ratio(s1, s2)
 
 
 def soundex_similarity(s1: str, s2: str) -> bool:
     """Checks if two words have the same Soundex encoding.
-    Best use case: Name matching with spelling variations (e.g., Jon vs. John)."""
+
+    Best use case: Name matching with spelling variations (e.g., Jon vs. John).
+    """
     return jf.soundex(s1) == jf.soundex(s2)
 
 
 def token_set_ratio(s1: str, s2: str) -> int:
     """Returns the Token Set Ratio similarity (0-100).
+
     This function compares word sets, ignoring duplicate words and focusing on essential differences.
-    Best use case: Handles duplicate words, useful for long strings."""
+
+    Best use case: Handles duplicate words, useful for long strings.
+    """
     return fuzz.token_set_ratio(s1, s2)
 
 
 def token_sort_ratio(s1: str, s2: str) -> int:
     """Returns the Token Sort Ratio similarity (0-100).
+
     This function sorts words alphabetically before comparison, making it useful when word order varies.
-    Best use case: When word order differs."""
+
+    Best use case: When word order differs.
+    """
     return fuzz.token_sort_ratio(s1, s2)
 
 
@@ -222,8 +292,14 @@ def compare_dataframe_columns(
     df["cosine_similarity"] = df.apply(
         lambda x: cosine_similarity_score(x[norm_col1], x[norm_col2]), axis=1
     )
+    df['damerau_levenshtein_distance'] = df.apply(
+        lambda x: damerau_levenshtein_distance(x[norm_col1], x[norm_col2]), axis=1
+    )
     df["hamming_distance"] = df.apply(
-        lambda x: hamming_distance(x[norm_col1], x[norm_col2], pad=True), axis=1
+        lambda x: hamming_distance(x[norm_col1], x[norm_col2], classic=False), axis=1
+    )
+    df["hamming_distance_percent"] = df.apply(
+        lambda x: hamming_distance_percent(x[norm_col1], x[norm_col2], classic=False), axis=1
     )
     df["jaccard_similarity"] = df.apply(
         lambda x: jaccard_similarity(x[norm_col1], x[norm_col2]), axis=1
