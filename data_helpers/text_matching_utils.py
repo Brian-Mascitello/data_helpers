@@ -1,11 +1,12 @@
-from typing import Optional
-from thefuzz import fuzz
+import re
+from difflib import SequenceMatcher
+from typing import Callable, Optional, Union
+
+import jellyfish as jf
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from difflib import SequenceMatcher
-import jellyfish as jf
-import numpy as np
+from thefuzz import fuzz
 
 
 def contains_string(s1: str, s2: str) -> bool:
@@ -116,32 +117,90 @@ def token_sort_ratio(s1: str, s2: str) -> int:
     return fuzz.token_sort_ratio(s1, s2)
 
 
-def normalize_text(text) -> str:
-    """Cleans text by stripping whitespace and converting to lowercase.
-    
-    If the input is missing (NaN) or not a string, it returns an empty string.
+def normalize_text(
+    text,
+    allowed: str = "alnum",  # Options: 'alpha' or 'alnum'
+    to_lower: bool = True,
+    collapse_spaces: bool = True,
+    trim_whitespace: bool = True,
+) -> str:
     """
-    if pd.isna(text) or text is None:
+    Cleans text by applying several optional transformations.
+
+    Parameters:
+        text: The input value to normalize.
+        to_lower (bool): If True, converts the text to lowercase.
+        allowed (str): Determines character filtering:
+            - 'alpha': keeps only alphabetic characters (a-z, A-Z) and spaces.
+            - 'alnum': keeps only alphanumeric characters (a-z, A-Z, 0-9) and spaces.
+            Any other value will leave the characters unchanged.
+        collapse_spaces (bool): If True, replaces multiple spaces with a single space.
+        trim_whitespace (bool): If True, removes leading and trailing whitespace.
+
+    Returns:
+        A normalized string. If the input is missing (NaN or None), returns an empty string.
+    """
+    if not text or pd.isna(text):
         return ""
-    # Convert non-string values to string before processing.
+
+    # Convert non-string inputs to string
     text = str(text)
-    return text.strip().lower()
+
+    # Apply allowed-character filtering while preserving spaces
+    if allowed in ["alnum", "alpha"]:
+        if allowed == "alnum":
+            # Keep only alphanumeric characters and spaces.
+            text = re.sub(r"[^a-zA-Z0-9\s]", " ", text)
+
+        elif allowed == "alpha":
+            # Keep only alphabetic characters and spaces.
+            text = re.sub(r"[^a-zA-Z\s]", " ", text)
+
+    if to_lower:
+        text = text.lower()
+
+    if collapse_spaces:
+        text = re.sub(r"\s+", " ", text)
+
+    if trim_whitespace:
+        text = text.strip()
+
+    return text
 
 
 def compare_dataframe_columns(
-    df: pd.DataFrame, col1: str, col2: str, normalize: bool = False
+    df: pd.DataFrame,
+    col1: str,
+    col2: str,
+    normalize: Union[bool, dict, Callable[[str], str]] = False,
 ) -> pd.DataFrame:
     """
     Compares two DataFrame columns using multiple fuzzy methods.
-    
-    If normalize is True, temporary columns (col1_normalized and col2_normalized)
-    are created to hold cleaned text (lowercase and stripped) before performing comparisons.
+
+    Parameters:
+        df: The input DataFrame.
+        col1: The first column name.
+        col2: The second column name.
+        normalize:
+            - If False, no normalization is applied.
+            - If True, uses the default normalization (normalize_text with default parameters).
+            - If a dict, passes it as keyword arguments to normalize_text.
+            - If a callable, uses the provided function for normalization.
     """
     if normalize:
         norm_col1 = col1 + "_normalized"
         norm_col2 = col2 + "_normalized"
-        df[norm_col1] = df[col1].apply(normalize_text)
-        df[norm_col2] = df[col2].apply(normalize_text)
+
+        # Determine the normalization function to use
+        if callable(normalize):
+            norm_func = normalize
+        elif isinstance(normalize, dict):
+            norm_func = lambda x: normalize_text(x, **normalize)
+        else:
+            norm_func = normalize_text
+
+        df[norm_col1] = df[col1].apply(norm_func)
+        df[norm_col2] = df[col2].apply(norm_func)
     else:
         norm_col1 = col1
         norm_col2 = col2
@@ -195,7 +254,12 @@ def compare_dataframe_columns(
 def main() -> None:
     """Example usage of the fuzzy comparison functions."""
     data = {
-        "col1": [" apple pie", "BANANA smoothie", "chocolate cake", "Vanilla ice cream "],
+        "col1": [
+            " apple pie",
+            "BANANA smoothie",
+            "chocolate cake",
+            "Vanilla ice cream ",
+        ],
         "col2": [
             "apple tart",
             "banana shake",
@@ -204,10 +268,24 @@ def main() -> None:
         ],
     }
     df = pd.DataFrame(data)
-    
-    # Toggle normalization on or off as desired.
-    df = compare_dataframe_columns(df, "col1", "col2", normalize=True)
-    print(df)
+
+    # 1) Original Data (no normalization)
+    print("=== Original Data (No Normalization) ===")
+    df_no_norm = compare_dataframe_columns(df.copy(), "col1", "col2", normalize=False)
+    print(df_no_norm, "\n")
+
+    # 2) Dictionary-based normalization (using default normalize_text with custom parameters)
+    print("=== Dictionary-based Normalization ===")
+    norm_options = {
+        "allowed": "alpha",
+        "to_lower": True,
+        "collapse_spaces": True,
+        "trim_whitespace": True,
+    }
+    df_dict_norm = compare_dataframe_columns(
+        df.copy(), "col1", "col2", normalize=norm_options
+    )
+    print(df_dict_norm, "\n")
 
 
 if __name__ == "__main__":
