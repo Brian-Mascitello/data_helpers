@@ -78,6 +78,17 @@ def longest_common_subsequence(s1: str, s2: str) -> int:
     return SequenceMatcher(None, s1, s2).find_longest_match(0, len(s1), 0, len(s2)).size
 
 
+def longest_common_subsequence_percent(s1: str, s2: str) -> float:
+    """Returns the percentage similarity (0-100) based on the longest common contiguous subsequence.
+    Best use case: Comparing the degree of shared contiguous sequences relative to the longer string.
+    """
+    match_length = longest_common_subsequence(s1, s2)
+    longest_length = max(len(s1), len(s2))
+    if longest_length == 0:
+        return 100.0
+    return (match_length / longest_length) * 100
+
+
 def metaphone_similarity(s1: str, s2: str) -> bool:
     """Checks if two words have the same Metaphone encoding.
     Best use case: Phonetic matching for English words and names."""
@@ -228,6 +239,9 @@ def compare_dataframe_columns(
     )
     df["longest_common_subsequence"] = df.apply(
         lambda x: longest_common_subsequence(x[norm_col1], x[norm_col2]), axis=1
+    )
+    df["longest_common_subsequence_percent"] = df.apply(
+        lambda x: longest_common_subsequence_percent(x[norm_col1], x[norm_col2]), axis=1
     )
     df["metaphone_match"] = df.apply(
         lambda x: metaphone_similarity(x[norm_col1], x[norm_col2]), axis=1
