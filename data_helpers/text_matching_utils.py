@@ -63,6 +63,34 @@ def hamming_distance(s1: str, s2: str, classic: bool = False) -> Optional[int]:
     return jf.hamming_distance(s1, s2)
 
 
+def get_category_description(category_code: str) -> str:
+    """
+    Returns the short description of the match category.
+    """
+    # Extract just the letter code from the category
+    code: str = category_code.split(")")[0] if ")" in category_code else category_code
+
+    category_map: dict[str, str] = {
+        "A": "Perfect character-for-character match",
+        "B": "Same text with possible case differences",
+        "C": "Same letters and numbers with spaces preserved",
+        "D": "Same text after standardizing spaces",
+        "E": "Same letters and numbers ignoring all spaces",
+        "F": "Same letters ignoring numbers, spaces, and special characters",
+        "G": "High average similarity across multiple metrics",
+        "H": "Same words regardless of order or duplicates",
+        "I": "One string contains most of the other",
+        "J": "High character-level similarity",
+        "K": "Moderate average similarity across multiple metrics",
+        "L": "Some word overlap regardless of order",
+        "M": "One string contains part of the other",
+        "N": "Some character-level similarity",
+        "O": "No significant similarity detected",
+    }
+
+    return category_map.get(code, "Unknown Category")
+
+
 def hamming_distance_percent(
     s1: str, s2: str, classic: bool = False
 ) -> Optional[float]:
@@ -374,6 +402,9 @@ def compare_dataframe_columns(
 
     df["text_match_category"] = df.apply(
         lambda x: text_match_category(x[norm_col1], x[norm_col2]), axis=1
+    )
+    df["category_description"] = df.apply(
+        lambda x: get_category_description(x["text_match_category"]), axis=1
     )
     df["contains_string"] = df.apply(
         lambda x: contains_string(x[norm_col1], x[norm_col2]), axis=1
