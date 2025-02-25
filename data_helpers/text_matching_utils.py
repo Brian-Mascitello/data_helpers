@@ -183,7 +183,8 @@ def soundex_similarity(s1: str, s2: str) -> bool:
     return jf.soundex(s1) == jf.soundex(s2)
 
 
-def text_match_category(s1: str, s2: str, include_score: bool = False) -> str:
+def text_match_category(s1: str, s2: str, include_score: bool = False, 
+                        strong_threshold: int = 80, weak_threshold: int = 50) -> str:
     """Returns the type of similarity match between two strings.
 
     This function categorizes text similarity based on exact matches, case insensitivity,
@@ -223,9 +224,9 @@ def text_match_category(s1: str, s2: str, include_score: bool = False) -> str:
         result = "5) Alphanumeric No-Space Match"
     elif re.sub(r"[^a-z]", "", s1_lower) == re.sub(r"[^a-z]", "", s2_lower):
         result = "6) Letters-Only Match"
-    elif score >= 80:
+    elif score >= strong_threshold:
         result = f"7) Strong Fuzzy Match"
-    elif score >= 50:
+    elif score >= weak_threshold:
         result = f"8) Weak Fuzzy Match"
     else:
         result = "9) No Match"
@@ -345,7 +346,7 @@ def compare_dataframe_columns(
         norm_col2 = col2
 
     df["text_match_category"] = df.apply(
-        lambda x: text_match_category(x[norm_col1], x[norm_col2], include_score=False), axis=1
+        lambda x: text_match_category(x[norm_col1], x[norm_col2]), axis=1
     )
     df["contains_string"] = df.apply(
         lambda x: contains_string(x[norm_col1], x[norm_col2]), axis=1
