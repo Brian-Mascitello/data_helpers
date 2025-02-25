@@ -35,7 +35,10 @@ def damerau_levenshtein_distance(s1: str, s2: str) -> int:
     """Returns the Damerau-Levenshtein distance between two strings.
     
     This measures the minimum number of operations (insertions, deletions, substitutions, 
-    or transpositions) required to transform one string into another.
+    or transpositions) required to transform one string into another. The Damerau-Levenshtein distance
+    differs from the classical Levenshtein distance by including transpositions among its allowable
+    operations in addition to the three classical single-character edit operations
+    (insertions, deletions and substitutions).
 
     Best use case: Identifying near-matches where transpositions are common, such as typos.
     """
@@ -168,6 +171,58 @@ def partial_ratio(s1: str, s2: str) -> int:
     Best use case: One string is a substring of another.
     """
     return fuzz.partial_ratio(s1, s2)
+
+
+def regex_match_type(s1: str, s2: str) -> str:
+    """Returns the type of similarity match between two strings.
+
+    This function categorizes text similarity based on exact matches, case insensitivity,
+    alphanumeric similarity, whitespace normalization, and fuzzy matching techniques.
+
+    It progressively applies transformations to determine if the strings are identical,
+    similar after cleaning (removing special characters, spaces, or numbers), or if they
+    are loosely related based on fuzzy matching scores.
+
+    Best use case: Comparing short to medium-length text inputs, such as names, titles, 
+    or product descriptions, where strict or lenient similarity assessments are needed.
+
+    Categories:
+        1) Exact Match - Identical strings.
+        2) Case-Insensitive Match - Identical when ignoring case.
+        3) Alphanumeric Match (Keeps Spaces) - Matches when ignoring special characters.
+        4) Whitespace-Insensitive Match - Matches when collapsing multiple spaces.
+        5) Alphanumeric No-Space Match - Matches when ignoring spaces & special characters.
+        6) Letters-Only Match - Matches when ignoring numbers, spaces, and special characters.
+        7) Strong Fuzzy Match (80% or better) - High similarity based on fuzzy matching.
+        8) Weak Fuzzy Match (50% or better but less than 80%) - Moderate similarity.
+        9) No Match - No significant similarity detected.
+    """
+    if s1 == s2:
+        return "1) Exact Match"
+
+    # Pre-compute lowercase versions to improve efficiency.
+    s1_lower = s1.lower()
+    s2_lower = s2.lower()
+
+    if s1_lower == s2_lower:
+        return "2) Case-Insensitive Match"
+    elif re.sub(r'[^a-z0-9 ]', '', s1_lower) == re.sub(r'[^a-z0-9 ]', '', s2_lower):
+        return "3) Alphanumeric Match (Keeps Spaces)"
+    elif re.sub(r'\s+', ' ', s1_lower).strip() == re.sub(r'\s+', ' ', s2_lower).strip():
+        return "4) Whitespace-Insensitive Match (Collapses Spaces)"
+    elif re.sub(r'[^a-z0-9]', '', s1_lower) == re.sub(r'[^a-z0-9]', '', s2_lower):
+        return "5) Alphanumeric No-Space Match"
+    elif re.sub(r'[^a-z]', '', s1_lower) == re.sub(r'[^a-z]', '', s2_lower):
+        return "6) Letters-Only Match"
+
+    # Compute fuzzy matching score as a fallback.
+    fuzz_score = fuzz.ratio(s1_lower, s2_lower)
+    if fuzz_score >= 80:
+        return f"7) Strong Fuzzy Match: {fuzz_score}%"
+    elif fuzz_score >= 50:
+        return f"8) Weak Fuzzy Match: {fuzz_score}%"
+    else:
+        return "9) No Match"
 
 
 def soundex_similarity(s1: str, s2: str) -> bool:
