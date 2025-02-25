@@ -209,17 +209,21 @@ def text_match_category(
         D) Whitespace-Insensitive Match (Collapses Spaces) - Matches when extra whitespace is collapsed.
         E) Alphanumeric No-Space Match - Matches when ignoring spaces & special characters.
         F) Letters-Only Match - Matches when ignoring numbers, spaces, and special characters.
-        G) Token Set Match (>= strong_threshold) - Same words appear regardless of order or duplicates.
-        H) Strong Partial Match (>= strong_threshold) - High similarity based on partial matching.
-        I) Strong Fuzzy Match (>= strong_threshold) - High overall fuzzy similarity.
-        J) Weak Token Set Match (>= weak_threshold but < strong_threshold) - Moderate token set similarity.
-        K) Weak Partial Match (>= weak_threshold but < strong_threshold) - Moderate similarity based on partial matching.
-        L) Weak Fuzzy Match (>= weak_threshold but < strong_threshold) - Moderate overall fuzzy similarity.
-        M) No Match - No significant similarity detected.
+        G) Composite Strong Match (>= strong_threshold) - High avg score across all metrics.
+        H) Strong Token Set Match (>= strong_threshold) - Same words appear regardless of order or duplicates.
+        I) Strong Partial Match (>= strong_threshold) - High similarity based on partial matching.
+        J) Strong Fuzzy Match (>= strong_threshold) - High overall fuzzy similarity.
+        K) Composite Weak Match (>= weak_threshold) - Moderate avg score across all metrics.
+        L) Weak Token Set Match (>= weak_threshold but < strong_threshold) - Moderate token set similarity.
+        M) Weak Partial Match (>= weak_threshold but < strong_threshold) - Moderate similarity based on partial matching.
+        N) Weak Fuzzy Match (>= weak_threshold but < strong_threshold) - Moderate overall fuzzy similarity.
+        O) No Match - No significant similarity detected.
     """
     score = fuzz.ratio(s1, s2)
     partial = fuzz.partial_ratio(s1, s2)
     token_set = fuzz.token_set_ratio(s1, s2)
+    composite_score = (score + partial + token_set) / 3
+
     s1_lower = s1.lower()
     s2_lower = s2.lower()
 
@@ -235,23 +239,27 @@ def text_match_category(
         result = "E) Alphanumeric No-Space Match"
     elif re.sub(r"[^a-z]", "", s1_lower) == re.sub(r"[^a-z]", "", s2_lower):
         result = "F) Letters-Only Match"
+    elif composite_score >= strong_threshold:
+        result = "G) Composite Strong Match"
     elif token_set >= strong_threshold:
-        result = "G) Strong Token Set Match"
+        result = "H) Strong Token Set Match"
     elif partial >= strong_threshold:
-        result = "H) Strong Partial Match"
+        result = "I) Strong Partial Match"
     elif score >= strong_threshold:
-        result = "I) Strong Fuzzy Match"
+        result = "J) Strong Fuzzy Match"
+    elif composite_score >= weak_threshold:
+        result = "K) Composite Weak Match"
     elif token_set >= weak_threshold:
-        result = "J) Weak Token Set Match"
+        result = "L) Weak Token Set Match"
     elif partial >= weak_threshold:
-        result = "K) Weak Partial Match"
+        result = "M) Weak Partial Match"
     elif score >= weak_threshold:
-        result = "L) Weak Fuzzy Match"
+        result = "N) Weak Fuzzy Match"
     else:
-        result = "M) No Match"
+        result = "O) No Match"
 
     if include_score:
-        result += f", Score: {score}%, Partial: {partial}%, Token Set: {token_set}%"
+        result += f", Score: {score:.1f}%, Partial: {partial:.1f}%, Token Set: {token_set:.1f}%, Composite: {composite_score:.1f}%"
 
     return result
 
