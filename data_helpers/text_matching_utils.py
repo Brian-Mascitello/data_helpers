@@ -183,20 +183,25 @@ def soundex_similarity(s1: str, s2: str) -> bool:
     return jf.soundex(s1) == jf.soundex(s2)
 
 
-def text_match_category(s1: str, s2: str, include_score: bool = False, 
-                        strong_threshold: int = 80, weak_threshold: int = 50) -> str:
+def text_match_category(
+    s1: str,
+    s2: str,
+    include_score: bool = False,
+    strong_threshold: int = 80,
+    weak_threshold: int = 50,
+) -> str:
     """Returns the type of similarity match between two strings.
 
     This function categorizes text similarity based on exact matches, case insensitivity,
     alphanumeric similarity, whitespace normalization, and fuzzy matching techniques.
-    
+
     It progressively applies transformations to determine if the strings are identical,
     similar after cleaning (removing special characters, spaces, or numbers), or if they
     are loosely related based on fuzzy matching scores.
-    
+
     Best use case: Comparing short to medium-length text inputs, such as names, titles,
     or product descriptions, where strict or lenient similarity assessments are needed.
-    
+
     Categories:
         A) Exact Match - Identical strings.
         B) Case-Insensitive Match - Identical when ignoring case.
@@ -204,14 +209,17 @@ def text_match_category(s1: str, s2: str, include_score: bool = False,
         D) Whitespace-Insensitive Match (Collapses Spaces) - Matches when extra whitespace is collapsed.
         E) Alphanumeric No-Space Match - Matches when ignoring spaces & special characters.
         F) Letters-Only Match - Matches when ignoring numbers, spaces, and special characters.
-        G) Strong Partial Match (>= strong_threshold) - High similarity based on partial matching.
-        H) Strong Fuzzy Match (>= strong_threshold) - High overall fuzzy similarity.
-        I) Weak Partial Match (>= weak_threshold but < strong_threshold) - Moderate similarity based on partial matching.
-        J) Weak Fuzzy Match (>= weak_threshold but < strong_threshold) - Moderate overall fuzzy similarity.
-        K) No Match - No significant similarity detected.
+        G) Token Set Match (>= strong_threshold) - Same words appear regardless of order or duplicates.
+        H) Strong Partial Match (>= strong_threshold) - High similarity based on partial matching.
+        I) Strong Fuzzy Match (>= strong_threshold) - High overall fuzzy similarity.
+        J) Weak Token Set Match (>= weak_threshold but < strong_threshold) - Moderate token set similarity.
+        K) Weak Partial Match (>= weak_threshold but < strong_threshold) - Moderate similarity based on partial matching.
+        L) Weak Fuzzy Match (>= weak_threshold but < strong_threshold) - Moderate overall fuzzy similarity.
+        M) No Match - No significant similarity detected.
     """
     score = fuzz.ratio(s1, s2)
     partial = fuzz.partial_ratio(s1, s2)
+    token_set = fuzz.token_set_ratio(s1, s2)
     s1_lower = s1.lower()
     s2_lower = s2.lower()
 
@@ -227,19 +235,23 @@ def text_match_category(s1: str, s2: str, include_score: bool = False,
         result = "E) Alphanumeric No-Space Match"
     elif re.sub(r"[^a-z]", "", s1_lower) == re.sub(r"[^a-z]", "", s2_lower):
         result = "F) Letters-Only Match"
+    elif token_set >= strong_threshold:
+        result = "G) Strong Token Set Match"
     elif partial >= strong_threshold:
-        result = "G) Strong Partial Match"
+        result = "H) Strong Partial Match"
     elif score >= strong_threshold:
-        result = "H) Strong Fuzzy Match"
+        result = "I) Strong Fuzzy Match"
+    elif token_set >= weak_threshold:
+        result = "J) Weak Token Set Match"
     elif partial >= weak_threshold:
-        result = "I) Weak Partial Match"
+        result = "K) Weak Partial Match"
     elif score >= weak_threshold:
-        result = "J) Weak Fuzzy Match"
+        result = "L) Weak Fuzzy Match"
     else:
-        result = "K) No Match"
+        result = "M) No Match"
 
     if include_score:
-        result += f", Score: {score}%, Partial: {partial}%"
+        result += f", Score: {score}%, Partial: {partial}%, Token Set: {token_set}%"
 
     return result
 
