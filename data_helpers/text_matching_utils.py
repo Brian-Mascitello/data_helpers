@@ -189,50 +189,57 @@ def text_match_category(s1: str, s2: str, include_score: bool = False,
 
     This function categorizes text similarity based on exact matches, case insensitivity,
     alphanumeric similarity, whitespace normalization, and fuzzy matching techniques.
-
+    
     It progressively applies transformations to determine if the strings are identical,
     similar after cleaning (removing special characters, spaces, or numbers), or if they
     are loosely related based on fuzzy matching scores.
-
+    
     Best use case: Comparing short to medium-length text inputs, such as names, titles,
     or product descriptions, where strict or lenient similarity assessments are needed.
-
+    
     Categories:
-        1) Exact Match - Identical strings.
-        2) Case-Insensitive Match - Identical when ignoring case.
-        3) Alphanumeric Match (Keeps Spaces) - Matches when ignoring special characters.
-        4) Whitespace-Insensitive Match - Matches when collapsing multiple spaces.
-        5) Alphanumeric No-Space Match - Matches when ignoring spaces & special characters.
-        6) Letters-Only Match - Matches when ignoring numbers, spaces, and special characters.
-        7) Strong Fuzzy Match (80% or better) - High similarity based on fuzzy matching.
-        8) Weak Fuzzy Match (50% or better but less than 80%) - Moderate similarity.
-        9) No Match - No significant similarity detected.
+        A) Exact Match - Identical strings.
+        B) Case-Insensitive Match - Identical when ignoring case.
+        C) Alphanumeric Match (Keeps Spaces) - Matches when ignoring special characters.
+        D) Whitespace-Insensitive Match (Collapses Spaces) - Matches when extra whitespace is collapsed.
+        E) Alphanumeric No-Space Match - Matches when ignoring spaces & special characters.
+        F) Letters-Only Match - Matches when ignoring numbers, spaces, and special characters.
+        G) Strong Partial Match (>= strong_threshold) - High similarity based on partial matching.
+        H) Strong Fuzzy Match (>= strong_threshold) - High overall fuzzy similarity.
+        I) Weak Partial Match (>= weak_threshold but < strong_threshold) - Moderate similarity based on partial matching.
+        J) Weak Fuzzy Match (>= weak_threshold but < strong_threshold) - Moderate overall fuzzy similarity.
+        K) No Match - No significant similarity detected.
     """
     score = fuzz.ratio(s1, s2)
+    partial = fuzz.partial_ratio(s1, s2)
     s1_lower = s1.lower()
     s2_lower = s2.lower()
 
     if s1 == s2:
-        result = "1) Exact Match"
+        result = "A) Exact Match"
     elif s1_lower == s2_lower:
-        result = "2) Case-Insensitive Match"
+        result = "B) Case-Insensitive Match"
     elif re.sub(r"[^a-z0-9 ]", "", s1_lower) == re.sub(r"[^a-z0-9 ]", "", s2_lower):
-        result = "3) Alphanumeric Match (Keeps Spaces)"
+        result = "C) Alphanumeric Match (Keeps Spaces)"
     elif re.sub(r"\s+", " ", s1_lower).strip() == re.sub(r"\s+", " ", s2_lower).strip():
-        result = "4) Whitespace-Insensitive Match (Collapses Spaces)"
+        result = "D) Whitespace-Insensitive Match (Collapses Spaces)"
     elif re.sub(r"[^a-z0-9]", "", s1_lower) == re.sub(r"[^a-z0-9]", "", s2_lower):
-        result = "5) Alphanumeric No-Space Match"
+        result = "E) Alphanumeric No-Space Match"
     elif re.sub(r"[^a-z]", "", s1_lower) == re.sub(r"[^a-z]", "", s2_lower):
-        result = "6) Letters-Only Match"
+        result = "F) Letters-Only Match"
+    elif partial >= strong_threshold:
+        result = "G) Strong Partial Match"
     elif score >= strong_threshold:
-        result = f"7) Strong Fuzzy Match"
+        result = "H) Strong Fuzzy Match"
+    elif partial >= weak_threshold:
+        result = "I) Weak Partial Match"
     elif score >= weak_threshold:
-        result = f"8) Weak Fuzzy Match"
+        result = "J) Weak Fuzzy Match"
     else:
-        result = "9) No Match"
+        result = "K) No Match"
 
     if include_score:
-        result += f", Score: {score}%"
+        result += f", Score: {score}%, Partial: {partial}%"
 
     return result
 
