@@ -183,7 +183,7 @@ def soundex_similarity(s1: str, s2: str) -> bool:
     return jf.soundex(s1) == jf.soundex(s2)
 
 
-def text_match_category(s1: str, s2: str) -> str:
+def text_match_category(s1: str, s2: str, include_score: bool = False) -> str:
     """Returns the type of similarity match between two strings.
 
     This function categorizes text similarity based on exact matches, case insensitivity,
@@ -207,32 +207,33 @@ def text_match_category(s1: str, s2: str) -> str:
         8) Weak Fuzzy Match (50% or better but less than 80%) - Moderate similarity.
         9) No Match - No significant similarity detected.
     """
-    if s1 == s2:
-        return "1) Exact Match"
-
-    # Pre-compute lowercase versions to improve efficiency.
+    score = fuzz.ratio(s1, s2)
     s1_lower = s1.lower()
     s2_lower = s2.lower()
 
-    if s1_lower == s2_lower:
-        return "2) Case-Insensitive Match"
+    if s1 == s2:
+        result = "1) Exact Match"
+    elif s1_lower == s2_lower:
+        result = "2) Case-Insensitive Match"
     elif re.sub(r"[^a-z0-9 ]", "", s1_lower) == re.sub(r"[^a-z0-9 ]", "", s2_lower):
-        return "3) Alphanumeric Match (Keeps Spaces)"
+        result = "3) Alphanumeric Match (Keeps Spaces)"
     elif re.sub(r"\s+", " ", s1_lower).strip() == re.sub(r"\s+", " ", s2_lower).strip():
-        return "4) Whitespace-Insensitive Match (Collapses Spaces)"
+        result = "4) Whitespace-Insensitive Match (Collapses Spaces)"
     elif re.sub(r"[^a-z0-9]", "", s1_lower) == re.sub(r"[^a-z0-9]", "", s2_lower):
-        return "5) Alphanumeric No-Space Match"
+        result = "5) Alphanumeric No-Space Match"
     elif re.sub(r"[^a-z]", "", s1_lower) == re.sub(r"[^a-z]", "", s2_lower):
-        return "6) Letters-Only Match"
-
-    # Compute fuzzy matching score as a fallback.
-    fuzz_score = fuzz.ratio(s1_lower, s2_lower)
-    if fuzz_score >= 80:
-        return f"7) Strong Fuzzy Match: {fuzz_score}%"
-    elif fuzz_score >= 50:
-        return f"8) Weak Fuzzy Match: {fuzz_score}%"
+        result = "6) Letters-Only Match"
+    elif score >= 80:
+        result = f"7) Strong Fuzzy Match"
+    elif score >= 50:
+        result = f"8) Weak Fuzzy Match"
     else:
-        return "9) No Match"
+        result = "9) No Match"
+
+    if include_score:
+        result += f", Score: {score}%"
+
+    return result
 
 
 def token_set_ratio(s1: str, s2: str) -> int:
@@ -344,7 +345,7 @@ def compare_dataframe_columns(
         norm_col2 = col2
 
     df["text_match_category"] = df.apply(
-        lambda x: text_match_category(x[norm_col1], x[norm_col2]), axis=1
+        lambda x: text_match_category(x[norm_col1], x[norm_col2], include_score=False), axis=1
     )
     df["contains_string"] = df.apply(
         lambda x: contains_string(x[norm_col1], x[norm_col2]), axis=1
