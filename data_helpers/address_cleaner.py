@@ -337,9 +337,9 @@ def clean_addresses(
 
 if __name__ == "__main__":
     # Example usage: adjust file paths, column names, and parameters as needed.
-    input_file: str = "your_file.csv"  # Replace with your CSV file path
-    output_file: str = "cleaned_file.csv"
-    columns_to_check: List[str] = ["Column1", "Column2", "Column3"]  # Columns to clean
+    input_file: str = "test_file.csv"  # Replace with your CSV file path
+    output_file: str = "cleaned_test_file.csv"
+    columns_to_check: List[str] = ["COMPANY", "ADDRESS1", "ADDRESS2", "CITY", "PHONE", "FAX", "PHONE2"]  # Columns to clean
     # For example, if the first column should be treated as a name, set leading_name to 1.
     cleaned_df: pd.DataFrame = clean_addresses(
         input_file,
