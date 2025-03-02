@@ -9,7 +9,8 @@ CITY_STATE_ZIP_PATTERN = re.compile(r",\s[A-Z]{2}\s\d{5}(-\d{4})?$")
 EMAIL_PATTERN = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
 EXTRACT_CITY_STATE_ZIP_PATTERN = re.compile(r"^(.*),\s([A-Z]{2})\s(\d{5}(-\d{4})?)$")
 PHONE_PATTERN = re.compile(
-    r"^\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}(?:\s*(?:ext[:\.]?\s*[0-9]+(?:[a-zA-Z0-9-]*)?))?$",
+    r"^(?:\(?\d{3}\)?[-.\s]?)?\d{3}[-.\s]?\d{4}"
+    r"(?:\s*(?:ext[:\.]?\s*[0-9]+(?:[a-zA-Z0-9-]*)?))?$",
     re.IGNORECASE,
 )
 WEBSITE_PATTERN = re.compile(
@@ -339,7 +340,15 @@ if __name__ == "__main__":
     # Example usage: adjust file paths, column names, and parameters as needed.
     input_file: str = "test_file.csv"  # Replace with your CSV file path
     output_file: str = "cleaned_test_file.csv"
-    columns_to_check: List[str] = ["COMPANY", "ADDRESS1", "ADDRESS2", "CITY", "PHONE", "FAX", "PHONE2"]  # Columns to clean
+    columns_to_check: List[str] = [
+        "COMPANY",
+        "ADDRESS1",
+        "ADDRESS2",
+        "CITY",
+        "PHONE",
+        "FAX",
+        "PHONE2",
+    ]  # Columns to clean
     # For example, if the first column should be treated as a name, set leading_name to 1.
     cleaned_df: pd.DataFrame = clean_addresses(
         input_file,
