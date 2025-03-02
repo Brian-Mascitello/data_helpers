@@ -19,7 +19,7 @@ PHONE_PATTERN = re.compile(
 )
 
 SUITE_PATTERN: Pattern[str] = re.compile(
-    r"(?i)\b#?(?:apartment|apt|building|bldg|floor|fl|room|ste\.?(?![a-zA-Z])|suite|unit)[\s#\-]*([0-9A-Za-z]+)\b",
+    r"(?i)\b#?(?:apartment|apt|building|bldg|floor|fl(?![a-zA-Z])|room|ste\.?(?![a-zA-Z])|suite|unit)[\s#\-]*([0-9A-Za-z]+)\b",
     re.IGNORECASE,
 )
 
