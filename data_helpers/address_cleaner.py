@@ -229,7 +229,9 @@ def generate_dynamic_columns(
     order = ["name", "address", "city", "state", "zip", "phone", "email", "website"]
     dynamic_columns = []
     for cat in order:
-        count = max_counts.get(cat, 1)
+        count = max(
+            max_counts.get(cat, 0), 1
+        )  # Ensure at least one column per category.
         for i in range(1, count + 1):
             dynamic_columns.append(f"{cat}{i}{suffix_str}")
     return dynamic_columns
