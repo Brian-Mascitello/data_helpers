@@ -1,21 +1,32 @@
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Pattern, Tuple
 
 import pandas as pd
 
 # Improved regex patterns
 CITY_PATTERN = re.compile(r"^[A-Za-z\s\.]+$")
+
 CITY_STATE_ZIP_PATTERN = re.compile(r",\s[A-Z]{2}\s\d{5}(-\d{4})?$")
+
 EMAIL_PATTERN = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
+
 EXTRACT_CITY_STATE_ZIP_PATTERN = re.compile(r"^(.*),\s([A-Z]{2})\s(\d{5}(-\d{4})?)$")
+
 PHONE_PATTERN = re.compile(
     r"^(?:\(?\d{3}\)?[-.\s]?)?\d{3}[-.\s]?\d{4}"
     r"(?:\s*(?:ext[:\.]?\s*[0-9]+(?:[a-zA-Z0-9-]*)?))?$",
     re.IGNORECASE,
 )
+
+SUITE_PATTERN: Pattern[str] = re.compile(
+    r"(?i)\b#?(?:apartment|apt|building|bldg|floor|fl|room|ste|suite|unit)[\s#\-]*([0-9A-Za-z]+)\b",
+    re.IGNORECASE,
+)
+
 WEBSITE_PATTERN = re.compile(
     r"^(https?://)?(www\.)?[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}(/.*)?$", re.IGNORECASE
 )
+
 ZIP_PATTERN = re.compile(r"^\d{5}(-\d{4})?$")
 
 # Set of valid US state abbreviations
@@ -85,6 +96,38 @@ ALLOWED_MAX = {
 }
 
 
+def move_suite_to_next_address(
+    df: pd.DataFrame,
+    address1_col: str = "address1_fix",
+    address2_col: str = "address2_fix",
+    pattern: Pattern[str] = SUITE_PATTERN,
+) -> pd.DataFrame:
+    """
+    Moves suite/unit information from address1_fix to address2_fix if address2_fix is blank.
+
+    Parameters:
+    df (pd.DataFrame): The dataframe containing address columns.
+    address1_col (str): The column name for the first address (default: 'address1_fix').
+    address2_col (str): The column name for the second address (default: 'address2_fix').
+    pattern (Pattern[str]): Regex pattern to identify suite/unit info (default: SUITE_PATTERN).
+
+    Returns:
+    pd.DataFrame: Updated dataframe with suite/unit info moved to address2_fix.
+    """
+
+    def extract_and_move(row: pd.Series) -> pd.Series:
+        if pd.isna(row[address2_col]) or row[address2_col] == "":
+            match = pattern.search(str(row[address1_col]))
+            if match:
+                row[address2_col] = match.group(0)  # Capture full suite/unit phrase
+                row[address1_col] = pattern.sub(
+                    "", str(row[address1_col])
+                ).strip()  # Remove from address1_fix
+        return row
+
+    return df.apply(extract_and_move, axis=1)
+
+
 def detect_address_component(value: str) -> Optional[str]:
     """
     Detects and classifies a value into an address component category.
@@ -108,9 +151,10 @@ def detect_address_component(value: str) -> Optional[str]:
         return "phone"
     elif value in US_STATES:
         return "state"
-    elif any(char.isdigit() for char in value) and any(
-        char.isalpha() for char in value
-    ):
+    # elif any(char.isdigit() for char in value) and any(
+    #     char.isalpha() for char in value
+    # ):
+    elif any(char.isdigit() for char in value):
         return "address"
     elif CITY_PATTERN.match(value):
         return "city"
@@ -321,17 +365,23 @@ def clean_addresses(
     append_columns: bool = False,
     leading_name: int = 0,
     suffix_str: str = "_fix",
+    move_suite: bool = False,
 ) -> pd.DataFrame:
     """
     Loads a CSV, cleans only the specified columns, and saves the cleaned data to a new CSV.
     If append_columns is True, the new fixed columns are appended to the original data.
     The parameter leading_name indicates how many leading columns to treat as names.
     The parameter suffix_str is appended to each generated column name.
+    If move_suite is True, the new suites are attemped to be separated from the 'address1_fix' and 'address2_fix' columns.
     """
     df: pd.DataFrame = pd.read_csv(input_csv, dtype=str)
     fix_df = clean_addresses_df(
         df, columns_to_check, city_strategy, append_columns, leading_name, suffix_str
     )
+
+    if move_suite:
+        fix_df = move_suite_to_next_address(fix_df)
+
     fix_df.to_csv(output_csv, index=False)
     return fix_df
 
@@ -358,5 +408,6 @@ if __name__ == "__main__":
         append_columns=True,
         leading_name=1,
         suffix_str="_fix",
+        move_suite=True,
     )
     print(f"Cleaned data saved to {output_file}")
