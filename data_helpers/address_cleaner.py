@@ -151,10 +151,19 @@ def detect_address_component(value: str) -> Optional[str]:
         return "phone"
     elif value in US_STATES:
         return "state"
-    # elif any(char.isdigit() for char in value) and any(
-    #     char.isalpha() for char in value
-    # ):
-    elif any(char.isdigit() for char in value):
+    # alpha and digit
+    # elif any(char.isalpha() for char in value) and any(char.isdigit() for char in value):
+    # digit
+    # elif any(char.isdigit() for char in value):
+    # Suite pattern or (alpha and digit) or (# and digit)
+    elif (
+        SUITE_PATTERN.match(value)
+        or (
+            any(char.isalpha() for char in value)
+            and any(char.isdigit() for char in value)
+        )
+        or ("#" in value and any(char.isdigit() for char in value))
+    ):
         return "address"
     elif CITY_PATTERN.match(value):
         return "city"
