@@ -15,7 +15,7 @@ def count_words(text_list: List[str]) -> List[Tuple[str, int]]:
     """Counts word occurrences in a list of text strings."""
     all_words = [word for text in text_list for word in tokenize(text)]
     word_counts = Counter(all_words)
-    return sorted(word_counts.items(), key=lambda x: x[1], reverse=True)
+    return sorted(word_counts.items(), key=lambda x: (-x[1], x[0]))
 
 
 def print_word_counts(word_counts: List[Tuple[str, int]]) -> None:
@@ -49,11 +49,14 @@ def remove_words_from_column(
             f"Column '{column}' not found. Available columns: {df.columns.tolist()}"
         )
 
-    elif not words_to_remove:
-        return df.copy()  # No words to remove, return original df
-    else:
-        df = df.copy()
+    df = df.copy()
 
+    # Handle missing values by filling NaNs with empty strings
+    df[column] = df[column].fillna("")
+
+    if not words_to_remove:
+        return df
+    else:
         # Construct regex pattern for words to remove
         words_pattern = r"\b(?:" + "|".join(map(re.escape, words_to_remove)) + r")\b"
 
