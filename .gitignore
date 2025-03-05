@@ -1,12 +1,10 @@
-venv/
 __pycache__/
+*.csv
 data_helpers/__pycache__/
-data_helpers/sklearn-env/
 data_helpers/.vscode/settings.json
-test_file.csv
-scripts/address_cleaner_tests.py
-cleaned_test_file.csv
+data_helpers/sklearn-env/
+scripts/
+scripts/find_functions.py
 scripts/testingmatching.py
 scripts/testingmatching2.py
-Emails_Checked.csv
-Unique_Emails.csv
+venv/

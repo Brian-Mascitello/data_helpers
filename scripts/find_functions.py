@@ -6,55 +6,44 @@ import sys
 
 def find_functions_in_directory(directory="."):
     """
-    Walk through all Python files in the specified directory and subdirectories,
+    List all Python files in the specified directory (non-recursive),
     extract function names, and print them along with their file paths.
 
-    :param directory: The root directory to start searching from (default is current directory).
+    :param directory: The directory to search for Python files.
     """
-    for root, _dirs, files in os.walk(directory):
-        # Skip the "venv" directory to avoid scanning virtual environments
-        if "venv" in root.split(os.sep):
-            continue
+    if not os.path.exists(directory):
+        print(
+            f"Error: The directory {os.path.abspath(directory)} does not exist.",
+            file=sys.stderr,
+        )
+        return
 
-        # Iterate over all files
-        for file in files:
-            if file.endswith(".py"):  # Process only Python files
-                filepath = os.path.join(root, file)
-                with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-                    try:
-                        # Parse the Python file to extract function definitions
-                        tree = ast.parse(f.read(), filename=filepath)
-                        functions = [
-                            node.name
-                            for node in ast.walk(tree)
-                            if isinstance(node, ast.FunctionDef)
-                            and not node.name.startswith("__")
-                        ]
+    try:
+        files = os.listdir(directory)
+    except OSError as e:
+        print(f"Error accessing directory {directory}: {e}", file=sys.stderr)
+        return
 
-                        # Print function names along with their file paths
-                        for func in functions:
-                            print(f"{filepath}: {func}()")
-                    except SyntaxError:
-                        # If a syntax error is encountered, print a warning
-                        print(f"Syntax error in {filepath}", file=sys.stderr)
+    for file in files:
+        if file.endswith(".py"):
+            filepath = os.path.join(directory, file)
+            with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                try:
+                    tree = ast.parse(f.read(), filename=filepath)
+                    functions = [
+                        node.name
+                        for node in ast.walk(tree)
+                        if isinstance(node, ast.FunctionDef)
+                        and not node.name.startswith("__")
+                    ]
+                    for func in functions:
+                        print(f"{filepath}: {func}()")
+                except SyntaxError:
+                    print(f"Syntax error in {filepath}", file=sys.stderr)
 
 
 if __name__ == "__main__":
-    """
-    Example usage:
-    Suppose we have a file structure like this:
-    ├── scripts/
-    │   ├── find_functions.py
-    │   ├── example_script.py  (contains function definitions)
+    # Print current working directory for debugging
+    print("Current working directory:", os.getcwd())
 
-    If `example_script.py` contains:
-
-    def my_function():
-        pass
-
-    Running `python scripts/find_functions.py` will output:
-    scripts/example_script.py: my_function()
-    """
-
-    # Run the function on the current directory
-    find_functions_in_directory(".")
+    find_functions_in_directory("./data_helpers")
