@@ -5,6 +5,7 @@ __pycache__/
 data_helpers/__pycache__/
 data_helpers/.vscode/settings.json
 data_helpers/sklearn-env/
+gpus.ipynb
 scripts/
 scripts/find_functions.py
 scripts/testingmatching.py

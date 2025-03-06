@@ -114,21 +114,69 @@ def remove_words_from_column(
             words_pattern, "", flags=re.IGNORECASE, regex=True
         )
 
-    # Clean up extra spaces left from removals
-    df[column] = df[column].str.replace(r"\s+", " ", regex=True).str.strip()
+        df[column] = df[column].str.replace(r"\s+", " ", regex=True).str.strip()
+    return df
+
+
+def count_and_save_word_counts(
+    text_series: pd.Series, csv_filename: str, label: str
+) -> pd.DataFrame:
+    """
+    Count words in a text series, save the frequency counts to a CSV, print the average frequency,
+    and return the DataFrame of word counts.
+    """
+    word_counts = count_words(text_series)
+    df_word_counts = pd.DataFrame(word_counts, columns=["Word", "Frequency"])
+    df_word_counts.to_csv(csv_filename, index=False)
+    avg_freq = df_word_counts["Frequency"].mean()
+    print(f"\nAverage word frequency {label}: {avg_freq:.2f}")
+    return df_word_counts
+
+
+def process_text_df(
+    df: pd.DataFrame,
+    original_col: str = "Original_Text",
+    cleaned_col: str = "Cleaned_Text",
+    words_to_remove: List[str] = None,
+    before_csv: str = "before_word_freqs.csv",
+    after_csv: str = "after_word_freqs.csv",
+    cleaned_csv: str = "cleaned_text.csv",
+) -> pd.DataFrame:
+    """
+    Process the text DataFrame by counting word frequencies before and after cleaning,
+    removing specified words, and saving the intermediate CSV files.
+
+    Returns the DataFrame with an added column for the cleaned text.
+    """
+    if words_to_remove is None:
+        words_to_remove = []
+
+    # Count words BEFORE cleaning using the original text
+    count_and_save_word_counts(df[original_col], before_csv, "BEFORE cleaning")
+
+    # Create a new column for cleaned text and remove specified words
+    df[cleaned_col] = df[original_col].copy()
+    df = remove_words_from_column(
+        df, cleaned_col, words_to_remove, case_sensitive=False
+    )
+
+    # Save the DataFrame with both Original and Cleaned Text to CSV
+    df.to_csv(cleaned_csv, index=False)
+
+    # Count words AFTER cleaning
+    count_and_save_word_counts(df[cleaned_col], after_csv, "AFTER cleaning")
 
     return df
 
 
 def main() -> None:
     """
-    Execute the main functionality:
-    - Create a sample DataFrame.
-    - Count word frequencies before and after removing specified words.
-    - Save intermediate results to CSV files.
-    - Print summary statistics and the final DataFrame.
+    Demonstrate the usage of process_text_df by:
+      - Creating a sample DataFrame.
+      - Defining the words to remove.
+      - Processing the DataFrame.
+      - Printing the final DataFrame.
     """
-    # Sample DataFrame with original text
     data = {
         "Original_Text": [
             "Fuzzy matching is useful for string comparison",
@@ -139,48 +187,20 @@ def main() -> None:
         ]
     }
     df = pd.DataFrame(data)
-
-    # Count words BEFORE cleaning (using Original_Text)
-    word_counts_before = count_words(df["Original_Text"])
-
-    # Save word counts before cleaning to CSV
-    df_word_counts_before = pd.DataFrame(
-        word_counts_before, columns=["Word", "Frequency"]
-    )
-    df_word_counts_before.to_csv("before_word_freqs.csv", index=False)
-
-    # Calculate and print average frequency before cleaning
-    avg_freq_before = df_word_counts_before["Frequency"].mean()
-    print(f"\nAverage word frequency BEFORE cleaning: {avg_freq_before:.2f}")
-
-    # Define the words to remove from the text
     words_to_remove = ["Fuzzy", "Matching", "comparison"]
 
-    # Create a new column for cleaned text without modifying Original_Text
-    df["Cleaned_Text"] = df["Original_Text"].copy()
-    df["Cleaned_Text"] = remove_words_from_column(
-        df, "Cleaned_Text", words_to_remove, case_sensitive=False
-    )["Cleaned_Text"]
-
-    # Save the DataFrame with both Original and Cleaned Text to CSV
-    df.to_csv("cleaned_text.csv", index=False)
-
-    # Count words AFTER cleaning (using Cleaned_Text)
-    word_counts_after = count_words(df["Cleaned_Text"])
-
-    # Save word counts after cleaning to CSV
-    df_word_counts_after = pd.DataFrame(
-        word_counts_after, columns=["Word", "Frequency"]
+    processed_df = process_text_df(
+        df,
+        original_col="Original_Text",
+        cleaned_col="Cleaned_Text",
+        words_to_remove=words_to_remove,
+        before_csv="before_word_freqs.csv",
+        after_csv="after_word_freqs.csv",
+        cleaned_csv="cleaned_text.csv",
     )
-    df_word_counts_after.to_csv("after_word_freqs.csv", index=False)
 
-    # Calculate and print average frequency after cleaning
-    avg_freq_after = df_word_counts_after["Frequency"].mean()
-    print(f"\nAverage word frequency AFTER cleaning: {avg_freq_after:.2f}")
-
-    # Print the final DataFrame showing the cleaned text
-    print("\nData after removing specified words:")
-    print(df)
+    print("\nData after processing:")
+    print(processed_df)
 
 
 if __name__ == "__main__":
