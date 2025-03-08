@@ -64,24 +64,27 @@ def passes_blocking_optimized(
     candidate_row: pd.Series,
     required_columns: Dict[str, str],
     fuzzy_case_sensitive: bool,
+    blocking_threshold: int = 1,
 ) -> bool:
     """
-    Optimized blocking mechanism using set intersections with robust edge case handling.
+    Optimized blocking mechanism using token intersections with a user-defined minimum token threshold.
 
     For each required column, this function:
       - Checks that both the row (df1) and candidate_row (df2) have a non-empty, non-NA value.
       - Extracts tokens (words) from both sides, applying case normalization if required.
-      - Uses a set intersection to quickly determine if any token in df1 exists in df2.
-      - Returns False immediately if a valid token is missing on either side, preventing a match.
+      - Determines the minimum number of tokens required to match, which is the minimum of
+        the blocking_threshold and the number of tokens in each value.
+      - Returns False immediately if the number of matching tokens is less than this required minimum.
 
     Parameters:
         row (pd.Series): A row from df1.
         candidate_row (pd.Series): A row from df2.
         required_columns (Dict[str, str]): Mapping of required column names in df1 to df2.
         fuzzy_case_sensitive (bool): Whether the matching should be case sensitive.
+        blocking_threshold (int): Minimum number of tokens that must match in each required column.
 
     Returns:
-        bool: True if the blocking check passes; otherwise, False.
+        bool: True if the candidate passes the blocking check; otherwise, False.
     """
     for req_col in required_columns:
         # Retrieve values from both dataframes for the required column.
@@ -104,7 +107,11 @@ def passes_blocking_optimized(
         # Tokenize the strings and check for any common tokens using set intersection.
         row_tokens = set(row_str.split())
         candidate_tokens = set(candidate_str.split())
-        if not row_tokens & candidate_tokens:
+
+        required_matches = min(
+            blocking_threshold, len(row_tokens), len(candidate_tokens)
+        )
+        if len(row_tokens & candidate_tokens) < required_matches:
             return False
     return True
 
@@ -240,8 +247,8 @@ def perform_fuzzy_matching(
         unmatched_df1 (pd.DataFrame): Unmatched records from df1.
         df2 (pd.DataFrame): The original df2 DataFrame.
         df2_renamed (pd.DataFrame): df2 with renamed columns.
-        required_columns (Dict[str, str]): Mapping of required columns (df1 key -> df2 value).
-        flexible_columns (Dict[str, str]): Mapping of flexible columns (df1 key -> df2 value).
+        required_columns (Dict[str, str]): Mapping of required columns between df1 and df2.
+        flexible_columns (Dict[str, str]): Mapping of flexible columns between df1 and df2.
         combos (List[Tuple[str, ...]]): List of flexible column combinations.
         fuzzy_threshold (int): Minimum fuzzy matching score for a candidate.
         fuzzy_case_sensitive (bool): Whether fuzzy matching is case sensitive.
@@ -286,7 +293,11 @@ def perform_fuzzy_matching(
             for _, row2 in candidate_subset.iterrows():
                 # Optionally apply blocking to quickly filter out unlikely candidates.
                 if blocking and not passes_blocking_optimized(
-                    row, row2, required_columns, fuzzy_case_sensitive
+                    row,
+                    row2,
+                    required_columns,
+                    fuzzy_case_sensitive,
+                    blocking_threshold=(blocking if isinstance(blocking, int) else 1),
                 ):
                     continue
 
@@ -453,7 +464,7 @@ def merge_dataframes(
       2. Rename df2 columns to avoid conflicts and record original indices.
       3. Attempt exact matching using various combinations of flexible columns.
       4. Apply fuzzy matching on the remaining unmatched df1 records.
-      5. Combine the results and post-process to assign consistent letter labels to match patterns.
+      5. Combine the results and post-process to assign consistent numeric labels to match patterns.
       6. Reorder the final columns for readability.
 
     Parameters:
@@ -463,7 +474,7 @@ def merge_dataframes(
         flexible_columns (Dict[str, str]): Mapping of flexible columns (df1 key -> df2 value).
         fuzzy_threshold (int): Minimum fuzzy score to consider a match.
         fuzzy_case_sensitive (bool): Whether fuzzy matching is case sensitive.
-        blocking (bool): Whether to apply blocking to optimize fuzzy matching.
+        blocking (bool or int): If True, uses a blocking threshold of 1; if an integer is provided, that value is used.
         max_combo_length (int, optional): Maximum number of columns in a combination.
 
     Returns:
@@ -611,7 +622,7 @@ def main() -> None:
         flexible_columns=flexible_columns,
         fuzzy_threshold=fuzzy_threshold,
         fuzzy_case_sensitive=False,
-        blocking=True,
+        blocking=1,
         max_combo_length=3,
     )
 
