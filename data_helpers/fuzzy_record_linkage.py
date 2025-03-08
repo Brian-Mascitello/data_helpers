@@ -381,20 +381,22 @@ def reorder_final_columns(
 
 def assign_consistent_categories(final_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Post-processes the final DataFrame to assign consistent letter labels
-    to each unique match pattern. The sorting prioritizes:
-      1. Exact matches (those without the term "Fuzzy").
-      2. Fuzzy matches sorted in descending order by the fuzzy percentage.
+    Post-processes the final DataFrame to assign consistent numeric labels
+    (with leading zeros) to each unique match pattern. The sorting prioritizes:
+      1. Exact matches (those without the term "Fuzzy"), sorted by descending
+         number of comparisons (more columns first).
+      2. Fuzzy matches: sorted by descending fuzzy percentage, then descending
+         number of comparisons.
       3. "No match" entries are placed last.
 
     Additionally, this function removes any "_lower" substrings from the match pattern,
-    so that the final categories are cleaner (e.g., "Name_lower" becomes "Name").
+    so that the final categories are cleaner.
 
     Parameters:
         final_df (pd.DataFrame): The merged DataFrame with a 'Match_Pattern' column.
 
     Returns:
-        pd.DataFrame: The DataFrame with a consistent 'Match_Category' assigned.
+        pd.DataFrame: The DataFrame with a consistent 'Match_Category' assigned as numeric labels with leading zeros.
     """
     # Remove "_lower" from the Match_Pattern column.
     final_df["Match_Pattern"] = final_df["Match_Pattern"].str.replace(
@@ -406,14 +408,14 @@ def assign_consistent_categories(final_df: pd.DataFrame) -> pd.DataFrame:
         # "No match" goes last.
         if lower_pattern == "no match":
             return (2, 0, 0, lower_pattern)
-        # Determine the number of comparisons by counting commas plus one.
+        # Count the number of comparisons by counting commas plus one.
         count = pattern.count(",") + 1
-        # Fuzzy matches have "fuzzy" in them.
+        # For fuzzy matches, extract the fuzzy percentage.
         if "fuzzy" in lower_pattern:
             # Extract the fuzzy percentage.
             m = re.search(r"\((\d+)% fuzzy\)", lower_pattern)
             percent = int(m.group(1)) if m else 0
-            # Group 1 for fuzzy: (1, -fuzzy_percentage, -count, pattern)
+            # Group fuzzy matches as (1, -fuzzy_percentage, -count, pattern).
             return (1, -percent, -count, lower_pattern)
         else:
             # Exact matches come first (Group 0) and are sorted by descending count then alphabetically.
@@ -421,8 +423,13 @@ def assign_consistent_categories(final_df: pd.DataFrame) -> pd.DataFrame:
 
     unique_patterns = final_df["Match_Pattern"].unique().tolist()
     sorted_patterns = sorted(unique_patterns, key=sort_key)
+
+    # Calculate the width for zero-padding based on the number of unique categories.
+    width = len(str(len(sorted_patterns)))
+    # Map each pattern to a label using zero-padded numbers (e.g., "01) pattern").
     pattern_to_label = {
-        pattern: f"{chr(65+i)}) {pattern}" for i, pattern in enumerate(sorted_patterns)
+        pattern: f"{i+1:0{width}d}) {pattern}"
+        for i, pattern in enumerate(sorted_patterns)
     }
     final_df["Match_Category"] = final_df["Match_Pattern"].map(pattern_to_label)
     return final_df
