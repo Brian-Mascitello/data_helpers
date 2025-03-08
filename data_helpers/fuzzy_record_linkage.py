@@ -31,21 +31,29 @@ def validate_dataframe_columns(
         )
 
 
-def generate_flexible_combos(flex_keys: List[str]) -> List[Tuple[str, ...]]:
+def generate_flexible_combos(
+    flex_keys: List[str], max_combo_length: int = None
+) -> List[Tuple[str, ...]]:
     """
     Generates all possible subsets (combinations) of flexible columns.
 
-    The function starts with the largest combination and works its way down to the empty set.
-    This ordering allows the algorithm to try the most strict match first before relaxing constraints.
+    The function starts with the largest combination (up to max_combo_length if provided)
+    and works its way down to the empty set. This ordering allows the algorithm to try the most strict match first
+    before relaxing constraints.
 
     Parameters:
         flex_keys (List[str]): List of flexible column names.
+        max_combo_length (int, optional): Maximum number of columns in a combination.
+            If None, uses len(flex_keys).
 
     Returns:
         List[Tuple[str, ...]]: List of all combinations of the flexible columns.
     """
+    if max_combo_length is None or max_combo_length > len(flex_keys):
+        max_combo_length = len(flex_keys)
+
     combos: List[Tuple[str, ...]] = []
-    for r in range(len(flex_keys), -1, -1):
+    for r in range(max_combo_length, -1, -1):
         for combo in itertools.combinations(flex_keys, r):
             combos.append(combo)
     return combos
@@ -412,6 +420,7 @@ def merge_dataframes(
     fuzzy_threshold: int,
     fuzzy_case_sensitive: bool = True,
     blocking: bool = True,
+    max_combo_length: int = None,
 ) -> pd.DataFrame:
     """
     Main function to merge df1 and df2 using a combination of exact and fuzzy matching.
@@ -432,6 +441,7 @@ def merge_dataframes(
         fuzzy_threshold (int): Minimum fuzzy score to consider a match.
         fuzzy_case_sensitive (bool): Whether fuzzy matching is case sensitive.
         blocking (bool): Whether to apply blocking to optimize fuzzy matching.
+        max_combo_length (int, optional): Maximum number of columns in a combination.
 
     Returns:
         pd.DataFrame: The final merged DataFrame with consistent match categories.
@@ -472,7 +482,7 @@ def merge_dataframes(
 
     # Generate all combinations of flexible columns.
     flex_keys: List[str] = list(flexible_columns.keys())
-    combos = generate_flexible_combos(flex_keys)
+    combos = generate_flexible_combos(flex_keys, max_combo_length=max_combo_length)
     results: List[pd.DataFrame] = []
 
     # Perform exact matching on df1.
@@ -579,6 +589,7 @@ def main() -> None:
         fuzzy_threshold=fuzzy_threshold,
         fuzzy_case_sensitive=False,
         blocking=True,
+        max_combo_length=3,
     )
 
     # Display the final merged DataFrame.
