@@ -391,17 +391,22 @@ def assign_consistent_categories(final_df: pd.DataFrame) -> pd.DataFrame:
     )
 
     def sort_key(pattern: str):
+        lower_pattern = pattern.lower()
         # "No match" goes last.
-        if pattern.lower() == "no match":
-            return (3, 0)
-        # For fuzzy patterns, extract the fuzzy percentage.
-        if "fuzzy" in pattern.lower():
-            m = re.search(r"\((\d+)% fuzzy\)", pattern.lower())
+        if lower_pattern == "no match":
+            return (2, 0, 0, lower_pattern)
+        # Determine the number of comparisons by counting commas plus one.
+        count = pattern.count(",") + 1
+        # Fuzzy matches have "fuzzy" in them.
+        if "fuzzy" in lower_pattern:
+            # Extract the fuzzy percentage.
+            m = re.search(r"\((\d+)% fuzzy\)", lower_pattern)
             percent = int(m.group(1)) if m else 0
-            return (2, -percent)
-        # Exact matches come first.
+            # Group 1 for fuzzy: (1, -fuzzy_percentage, -count, pattern)
+            return (1, -percent, -count, lower_pattern)
         else:
-            return (1, 0)
+            # Exact matches come first (Group 0) and are sorted by descending count then alphabetically.
+            return (0, -count, lower_pattern)
 
     unique_patterns = final_df["Match_Pattern"].unique().tolist()
     sorted_patterns = sorted(unique_patterns, key=sort_key)
