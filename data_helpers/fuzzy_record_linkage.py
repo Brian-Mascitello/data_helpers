@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Tuple
 
 import pandas as pd
 from thefuzz import fuzz
+from tqdm import tqdm
 
 # Constant used to indicate a "no match" in fuzzy matching.
 NO_MATCH_PLACEHOLDER = "NO_MATCH_PLACEHOLDER"
@@ -242,7 +243,10 @@ def perform_fuzzy_matching(
         List[dict]: A list of dictionaries representing matched records with a raw match pattern.
     """
     fuzzy_results: List[dict] = []
-    for _, row in unmatched_df1.iterrows():
+    # Wrapped the DataFrame iterator in tqdm for progress monitoring.
+    for _, row in tqdm(
+        unmatched_df1.iterrows(), total=len(unmatched_df1), desc="Fuzzy matching rows"
+    ):
         candidate_for_row = None
         best_combo_used: Tuple[str, ...] = ()
         best_effective_threshold: Any = None
