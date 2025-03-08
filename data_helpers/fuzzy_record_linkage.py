@@ -229,29 +229,29 @@ def perform_fuzzy_matching(
     """
     Performs fuzzy matching for records in df1 that were not exactly matched.
 
-    For each unmatched record:
-      - Iterates through the combinations of flexible columns.
-      - For each candidate in df2, applies an optional blocking mechanism to reduce comparisons.
-      - Uses fuzzy matching (fuzz.ratio) on required columns.
-      - Records the raw match pattern (e.g., "Name (90% Fuzzy), Date") if a candidate meets the threshold.
-      - If no candidate meets the threshold, assigns a "No match" pattern.
+    For each unmatched record in df1:
+      - Iterates over flexible column combinations.
+      - For the current combo, pre-filters df2 so that only candidates that match
+        exactly on the flexible columns in the combo are considered.
+      - Then applies blocking and fuzzy matching on the candidate subset.
+      - Records a match if the fuzzy scores meet the threshold; otherwise, assigns "No match".
 
     Parameters:
         unmatched_df1 (pd.DataFrame): Unmatched records from df1.
         df2 (pd.DataFrame): The original df2 DataFrame.
         df2_renamed (pd.DataFrame): df2 with renamed columns.
-        required_columns (Dict[str, str]): Mapping of required columns between df1 and df2.
-        flexible_columns (Dict[str, str]): Mapping of flexible columns between df1 and df2.
+        required_columns (Dict[str, str]): Mapping of required columns (df1 key -> df2 value).
+        flexible_columns (Dict[str, str]): Mapping of flexible columns (df1 key -> df2 value).
         combos (List[Tuple[str, ...]]): List of flexible column combinations.
         fuzzy_threshold (int): Minimum fuzzy matching score for a candidate.
         fuzzy_case_sensitive (bool): Whether fuzzy matching is case sensitive.
-        blocking (bool): Whether to apply the blocking mechanism.
+        blocking (bool): Whether to apply blocking to optimize fuzzy matching.
 
     Returns:
         List[dict]: A list of dictionaries representing matched records with a raw match pattern.
     """
     fuzzy_results: List[dict] = []
-    # Wrapped the DataFrame iterator in tqdm for progress monitoring.
+    # Iterate over each unmatched row in df1 with a progress bar.
     for _, row in tqdm(
         unmatched_df1.iterrows(), total=len(unmatched_df1), desc="Fuzzy matching rows"
     ):
@@ -260,28 +260,37 @@ def perform_fuzzy_matching(
         best_effective_threshold: Any = None
         found_candidate = False
 
-        # Try each flexible combo
+        # Try each flexible column combination.
         for combo in combos:
             local_candidate = None
             local_best_score = -1
             local_effective_threshold = None
-            for _, row2 in df2.iterrows():
-                # Ensure that flexible columns match exactly for the current combo.
-                flexible_match = True
-                for flex_col in combo:
-                    if str(row[flex_col]) != str(row2[flexible_columns[flex_col]]):
-                        flexible_match = False
-                        break
-                if not flexible_match:
-                    continue
 
+            # Pre-filter df2 based on the current flexible combo:
+            # For each flexible column in the combo, only keep candidates where the value
+            # matches the value in the current df1 row.
+            candidate_subset = df2
+            for flex_col in combo:
+                # Filter candidate_subset where the df2 value for the flexible column equals the df1 value.
+                candidate_subset = candidate_subset[
+                    candidate_subset[flexible_columns[flex_col]] == row[flex_col]
+                ]
+                # If no candidates remain, break early for this combo.
+                if candidate_subset.empty:
+                    break
+            # Skip to the next combo if pre-filtering resulted in an empty subset.
+            if candidate_subset.empty:
+                continue
+
+            # Iterate over the pre-filtered candidate rows.
+            for _, row2 in candidate_subset.iterrows():
                 # Optionally apply blocking to quickly filter out unlikely candidates.
                 if blocking and not passes_blocking_optimized(
                     row, row2, required_columns, fuzzy_case_sensitive
                 ):
                     continue
 
-                # Compute fuzzy scores for required columns.
+                # Compute fuzzy matching scores for required columns.
                 scores = compute_fuzzy_scores(
                     row, row2, required_columns, fuzzy_case_sensitive
                 )
@@ -295,6 +304,8 @@ def perform_fuzzy_matching(
                         local_best_score = sum_score
                         local_candidate = row2
                         local_effective_threshold = effective
+
+            # If a candidate was found using the current combo, select it and stop trying further combos.
             if local_candidate is not None:
                 candidate_for_row = local_candidate
                 best_combo_used = combo
