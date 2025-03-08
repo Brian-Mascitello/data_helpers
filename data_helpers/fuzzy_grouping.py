@@ -51,11 +51,11 @@ def assign_similarity_groups(
             by=name_column, key=lambda x: x.str.lower() if case_insensitive else x
         ).reset_index(drop=True)
 
-    # Extract name values for efficiency, handling NaNs
+    # Normalize names for comparison
+    names = df[name_column].fillna("")
     if case_insensitive:
-        names = df[name_column].fillna("").str.lower().values
-    else:
-        names = df[name_column].fillna("").values
+        names = names.str.lower()
+    names = names.values  # Convert to NumPy array for efficiency
 
     # Initialize grouping
     group_number = start_group
@@ -76,3 +76,33 @@ def assign_similarity_groups(
 
     df[group_column] = group_numbers
     return df
+
+
+def main():
+    # Sample DataFrame for testing
+    data = {
+        "Name": [
+            "John Doe",
+            "Jon Doe",
+            "Jane Doe",
+            "Janet Doe",
+            "Jack Daniels",
+            "Jake Daniels",
+        ],
+    }
+    df = pd.DataFrame(data)
+
+    # Run the function with test parameters
+    result_df = assign_similarity_groups(
+        df,
+        name_column="Name",
+        threshold=80,  # Adjust similarity threshold
+        verbose=True,  # Show comparison details
+    )
+
+    # Display results
+    print(result_df)
+
+
+if __name__ == "__main__":
+    main()
