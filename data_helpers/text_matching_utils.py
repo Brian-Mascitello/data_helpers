@@ -335,7 +335,8 @@ def normalize_text(
     Returns:
         A normalized string. If the input is missing (NaN or None), returns an empty string.
     """
-    if not text or pd.isna(text):
+    # Python should check if NA first, order matters.
+    if pd.isna(text) or not text:
         return ""
 
     # Convert non-string inputs to string
