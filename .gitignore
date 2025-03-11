@@ -12,3 +12,4 @@ scripts/testingmatching.py
 scripts/testingmatching2.py
 venv/
 data_helpers/testing.py
+test_image.png
