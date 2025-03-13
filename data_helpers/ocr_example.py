@@ -37,6 +37,46 @@ def check_tesseract_installed(tesseract_path: Path, verbose: bool = True) -> boo
         return False
 
 
+def convert_to_grayscale(original_file: Path, verbose: bool = True) -> Path:
+    """
+    Converts the original image to grayscale, saves it with '-gray' appended to the filename,
+    and returns the new file path.
+
+    Args:
+        original_file (Path): The path to the original image file.
+        verbose (bool): Whether to print messages to the terminal.
+
+    Returns:
+        Path: The path to the newly saved grayscale image. If conversion fails, returns the original path.
+    """
+    if not original_file.exists():
+        if verbose:
+            print(f"Error: The image file '{original_file}' does not exist.")
+        return original_file
+
+    try:
+        # Open the image and convert to grayscale
+        img = Image.open(original_file).convert("L")
+
+        # Construct the new filename: e.g., test_image3.png -> test_image3-gray.png
+        filename_without_ext = original_file.stem  # e.g. "test_image3"
+        extension = original_file.suffix  # e.g. ".png"
+        new_filename = f"{filename_without_ext}-gray{extension}"
+        new_file_path = original_file.with_name(new_filename)
+
+        # Save the grayscale image
+        img.save(new_file_path)
+
+        if verbose:
+            print(f"Grayscale image saved as '{new_file_path}'")
+
+        return new_file_path
+    except Exception as e:
+        if verbose:
+            print(f"Error: Failed to convert image to grayscale. Details: {e}")
+        return original_file
+
+
 def process_image(image_path: Path, verbose: bool = True) -> str:
     """
     Loads an image and extracts text using Tesseract OCR.
@@ -107,6 +147,7 @@ def perform_ocr(
     output_filename: str,
     use_datetime_stamp: bool,
     verbose: bool = True,
+    use_grayscale: bool = False,
 ) -> None:
     """
     Checks if Tesseract is installed and processes an image file using OCR.
@@ -118,17 +159,22 @@ def perform_ocr(
         output_filename (str): The base filename for the output text file.
         use_datetime_stamp (bool): If True, a datetime stamp is added to the output filename.
         verbose (bool): Whether to print messages to the terminal.
+        use_grayscale (bool): If True, convert the image to grayscale before OCR.
     """
-    # Check if Tesseract is installed and accessible
+    # 1. Check if Tesseract is installed and accessible
     if not check_tesseract_installed(tesseract_path, verbose):
         return
 
-    # Process the image file
+    # 2. Convert to grayscale if requested
+    if use_grayscale:
+        file_to_process = convert_to_grayscale(file_to_process, verbose)
+
+    # 3. Process the image file
     if verbose:
         print("Processing image file...")
     extracted_text = process_image(file_to_process, verbose)
 
-    # Display and save the extracted text if any is found
+    # 4. Display and save the extracted text if any is found
     if extracted_text:
         if verbose:
             print("\nExtracted Text:\n", extracted_text)
@@ -156,13 +202,14 @@ def main():
     use_datetime_stamp = True  # Include a datetime stamp in the output filename if True
     verbose = True  # Set to False to suppress terminal output
 
-    # Run OCR processing on the provided file
+    # If you want to process the image in grayscale, set use_grayscale to True
     perform_ocr(
         tesseract_path=tesseract_path,
         file_to_process=file_to_process,
         output_filename=output_filename,
         use_datetime_stamp=use_datetime_stamp,
         verbose=verbose,
+        use_grayscale=False,  # Toggle this on/off as needed
     )
 
 
