@@ -19,6 +19,41 @@ def get_column_names(
     return [row["column_name"] for row in client.query(query).result()]
 
 
+def validate_and_get_columns(
+    client: bigquery.Client,
+    dataset_id: str,
+    table_id: str,
+    columns: Optional[List[str]],
+    table_label: str,
+) -> List[str]:
+    """
+    Validates the provided column list against the table's columns.
+
+    If columns is None, returns all column names from the table.
+    If columns is provided, raises a ValueError if any column is invalid.
+
+    Args:
+        client (bigquery.Client): BigQuery client instance.
+        dataset_id (str): Dataset ID.
+        table_id (str): Table ID.
+        columns (Optional[List[str]]): List of columns to validate.
+        table_label (str): Label for the table (e.g., "Table A" or "Table B").
+
+    Returns:
+        List[str]: Validated list of column names.
+    """
+    valid_columns = get_column_names(client, dataset_id, table_id)
+    if columns is None:
+        return valid_columns
+    valid_set = set(valid_columns)
+    for col in columns:
+        if col not in valid_set:
+            raise ValueError(
+                f"Invalid column '{col}' for {table_label}. Valid columns are: {sorted(valid_set)}"
+            )
+    return columns
+
+
 def get_distinct_values(
     client: bigquery.Client,
     dataset_id: str,
@@ -116,12 +151,14 @@ def find_potential_join_keys(
     order_by: bool = True,
 ) -> pd.DataFrame:
     """
-    Identifies potential join keys between two tables based on distinct value overlap.
+    Identifies potential join key pairs between two tables based on distinct value overlap.
 
-    This function treats table A as the primary table and, for each column in table A,
-    finds the best matching column in table B. It computes two overlap ratios:
-      - Overlap Ratio A (%): Percentage of distinct values in table A that are found in table B.
-      - Overlap Ratio B (%): Percentage of distinct values in table B that are found in table A.
+    For every combination of a column in table A and a column in table B, this function computes:
+      - Overlap Ratio A (%): Percentage of distinct values in table A found in table B.
+      - Overlap Ratio B (%): Percentage of distinct values in table B found in table A.
+      - Avg Overlap (%): Average of the two overlap ratios.
+
+    All combinations are returned.
 
     Args:
         client (bigquery.Client): BigQuery client instance.
@@ -138,21 +175,24 @@ def find_potential_join_keys(
     Returns:
         pd.DataFrame: DataFrame with:
           - Table A Column
-          - Best Match in Table B
+          - Table B Column
           - Overlap Ratio A (%)
           - Overlap Ratio B (%)
+          - Avg Overlap (%)
     """
-    # If column lists aren't provided, fetch all columns.
-    if columns_A is None:
-        columns_A = get_column_names(client, dataset_id_A, table_A)
-    if columns_B is None:
-        columns_B = get_column_names(client, dataset_id_B, table_B)
+    # Validate and fetch column lists.
+    columns_A = validate_and_get_columns(
+        client, dataset_id_A, table_A, columns_A, "Table A"
+    )
+    columns_B = validate_and_get_columns(
+        client, dataset_id_B, table_B, columns_B, "Table B"
+    )
 
     distinct_cache: CacheType = {}
     join_candidates = []
 
     # Process each column in table A with a progress bar.
-    for col_A in tqdm(columns_A, desc="Processing Table A columns"):
+    for col_A in tqdm(columns_A, desc="Processing Table A columns", position=0):
         values_A = get_cached_distinct_values(
             client,
             dataset_id_A,
@@ -165,12 +205,10 @@ def find_potential_join_keys(
         if not values_A:
             continue
 
-        best_match = None
-        best_avg_overlap = 0.0
-        best_overlap_A = 0.0
-        best_overlap_B = 0.0
-
-        for col_B in columns_B:
+        # Nested progress bar for each Table B column.
+        for col_B in tqdm(
+            columns_B, desc=f"Processing Table B for {col_A}", position=1, leave=False
+        ):
             values_B = get_cached_distinct_values(
                 client,
                 dataset_id_B,
@@ -190,26 +228,20 @@ def find_potential_join_keys(
             overlap_B = compute_overlap_ratio(
                 values_A, values_B
             )  # Percentage of B found in A.
-            avg_overlap = (overlap_A + overlap_B) / 2
+            avg_overlap = round((overlap_A + overlap_B) / 2, 2)
 
-            if avg_overlap > best_avg_overlap:
-                best_avg_overlap = avg_overlap
-                best_match = col_B
-                best_overlap_A = overlap_A
-                best_overlap_B = overlap_B
-
-        if best_match and best_avg_overlap > 0:
             join_candidates.append(
                 {
                     "Table A Column": col_A,
-                    "Best Match in Table B": best_match,
-                    "Overlap Ratio A (%)": best_overlap_A,
-                    "Overlap Ratio B (%)": best_overlap_B,
+                    "Table B Column": col_B,
+                    "Overlap Ratio A (%)": overlap_A,
+                    "Overlap Ratio B (%)": overlap_B,
+                    "Avg Overlap (%)": avg_overlap,
                 }
             )
 
     return pd.DataFrame(join_candidates).sort_values(
-        by="Overlap Ratio A (%)", ascending=False
+        by="Avg Overlap (%)", ascending=False
     )
 
 
