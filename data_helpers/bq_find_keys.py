@@ -4,6 +4,7 @@ CacheType = Dict[Tuple[str, str, int, bool], List]
 
 import pandas as pd
 from google.cloud import bigquery
+from tqdm import tqdm
 
 
 def get_column_names(
@@ -69,7 +70,7 @@ def get_cached_distinct_values(
         column (str): The column to analyze.
         limit (int): The limit for distinct values.
         order_by (bool): Whether to order the results before limiting.
-        cache (List): Dictionary for caching results.
+        cache (CacheType): Dictionary for caching results.
 
     Returns:
         List: Cached list of distinct values.
@@ -132,10 +133,11 @@ def find_potential_join_keys(
     columns_B = get_column_names(client, dataset_id, table_B)
 
     # Create a cache for distinct values
-    distinct_cache = {}
+    distinct_cache: CacheType = {}
     join_candidates = []
 
-    for col_B in columns_B:
+    # Wrap the outer loop with tqdm to show progress on processing Table B columns.
+    for col_B in tqdm(columns_B, desc="Processing Table B columns"):
         # Get distinct values for the current column in Table B from cache
         values_B = get_cached_distinct_values(
             client,
@@ -164,7 +166,6 @@ def find_potential_join_keys(
 
             # Compute overlap ratio
             overlap_ratio = compute_overlap_ratio(values_B, values_A)
-
             if overlap_ratio > best_overlap:
                 best_overlap = overlap_ratio
                 best_match = col_A  # Track the best-matching column
