@@ -87,18 +87,29 @@ def find_best_match(
     best_match_row = None
 
     for _, candidate in df2.iterrows():
-        text2_orig = candidate[col2]
-        text2 = norm_func(text2_orig) if norm_func else text2_orig
+        # Use cached normalized value if present.
+        if f"__norm_{col2}" in candidate:
+            text2 = candidate[f"__norm_{col2}"]
+        else:
+            text2_orig = candidate[col2]
+            text2 = norm_func(text2_orig) if norm_func else text2_orig
         text2 = "" if pd.isna(text2) else str(text2)
 
         if first_letter_blocking:
-            if not text1 or not text2 or text1[0] != text2[0]:
+            if f"__first_letter_{col2}" in candidate:
+                letter2 = candidate[f"__first_letter_{col2}"]
+            else:
+                letter2 = text2[0] if text2 else ""
+            if not text1 or not text2 or text1[0] != letter2:
                 continue
 
         if first_word_blocking:
-            first_word1 = text1.split()[0] if text1.strip() != "" else ""
-            first_word2 = text2.split()[0] if text2.strip() != "" else ""
-            if first_word1 != first_word2:
+            if f"__first_word_{col2}" in candidate:
+                word2 = candidate[f"__first_word_{col2}"]
+            else:
+                word2 = text2.split()[0] if text2.split() else ""
+            word1 = text1.split()[0] if text1.split() else ""
+            if word1 != word2:
                 continue
 
         score = score_func(text1, text2)
@@ -119,6 +130,7 @@ def join_best_match(
     first_letter_blocking: bool = False,
     first_word_blocking: bool = False,
     match_suffix: str = "_match",
+    remove_cache: bool = True,
 ) -> pd.DataFrame:
     """
     Joins two DataFrames based on the best fuzzy match of the specified string columns,
@@ -146,6 +158,7 @@ def join_best_match(
         first_word_blocking (bool): If True, only candidate rows from df2 with the same first word
             (after normalization if applied) as df1 are considered.
         match_suffix (str): Suffix to append to the df2 column names in the output (default: "_match").
+        remove_cache (bool): If True, remove caching helper columns from the final output.
 
     Returns:
         pd.DataFrame: A DataFrame with all df1 rows, the best match from df2 (columns renamed with the suffix),
@@ -165,12 +178,38 @@ def join_best_match(
         else:
             norm_func = normalize_text
 
-    result_rows = []
+    # If caching is beneficial (for normalization or blocking), add helper columns.
+    cache_enabled = bool(normalize or first_letter_blocking or first_word_blocking)
+    if cache_enabled:
+        # Create normalized columns.
+        df1[f"__norm_{col1}"] = df1[col1].apply(norm_func) if norm_func else df1[col1]
+        df2[f"__norm_{col2}"] = df2[col2].apply(norm_func) if norm_func else df2[col2]
+        # Create first letter columns if needed.
+        if first_letter_blocking:
+            df1[f"__first_letter_{col1}"] = df1[f"__norm_{col1}"].apply(
+                lambda x: x[0] if x else ""
+            )
+            df2[f"__first_letter_{col2}"] = df2[f"__norm_{col2}"].apply(
+                lambda x: x[0] if x else ""
+            )
+        # Create first word columns if needed.
+        if first_word_blocking:
+            df1[f"__first_word_{col1}"] = df1[f"__norm_{col1}"].apply(
+                lambda x: x.split()[0] if x.split() else ""
+            )
+            df2[f"__first_word_{col2}"] = df2[f"__norm_{col2}"].apply(
+                lambda x: x.split()[0] if x.split() else ""
+            )
 
+    result_rows = []
     # Iterate over each row in df1 with a progress bar.
     for _, row in tqdm(df1.iterrows(), total=len(df1), desc="Matching rows"):
-        text1_orig = row[col1]
-        text1 = norm_func(text1_orig) if norm_func else text1_orig
+        # Use the cached normalized value if available.
+        text1 = (
+            row[f"__norm_{col1}"]
+            if cache_enabled and f"__norm_{col1}" in row
+            else row[col1]
+        )
 
         best_match_row, best_score = find_best_match(
             text1,
@@ -195,7 +234,14 @@ def join_best_match(
 
         result_rows.append(result)
 
-    return pd.DataFrame(result_rows)
+    result_df = pd.DataFrame(result_rows)
+
+    # Remove caching columns if requested.
+    if remove_cache:
+        cache_cols = [col for col in result_df.columns if col.startswith("__")]
+        result_df.drop(columns=cache_cols, inplace=True)
+
+    return result_df
 
 
 def main() -> None:
@@ -224,6 +270,7 @@ def main() -> None:
         first_letter_blocking=True,
         first_word_blocking=True,
         match_suffix="_match",
+        remove_cache=True,
     )
 
     print("Joined DataFrame:")
