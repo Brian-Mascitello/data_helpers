@@ -95,19 +95,21 @@ def find_best_match(
             text2 = norm_func(text2_orig) if norm_func else text2_orig
         text2 = "" if pd.isna(text2) else str(text2)
 
+        # Since we pre-filtered, the blocking conditions should mostly pass,
+        # but we keep them as a fallback.
         if first_letter_blocking:
-            if f"__first_letter_{col2}" in candidate:
-                letter2 = candidate[f"__first_letter_{col2}"]
-            else:
-                letter2 = str(text2)[0] if text2 and len(str(text2)) > 0 else ""
+            letter2 = candidate.get(
+                f"__first_letter_{col2}",
+                str(text2)[0] if text2 and len(str(text2)) > 0 else "",
+            )
             if not text1 or not text2 or text1[0] != letter2:
                 continue
 
         if first_word_blocking:
-            if f"__first_word_{col2}" in candidate:
-                word2 = candidate[f"__first_word_{col2}"]
-            else:
-                word2 = str(text2).split()[0] if str(text2).split() else ""
+            word2 = candidate.get(
+                f"__first_word_{col2}",
+                str(text2).split()[0] if str(text2).split() else "",
+            )
             word1 = str(text1).split()[0] if str(text1).split() else ""
             if word1 != word2:
                 continue
@@ -215,9 +217,22 @@ def join_best_match(
             else row[col1]
         )
 
+        # Pre-filter df2 based on blocking criteria if enabled.
+        candidate_df = df2
+        if cache_enabled:
+            if first_letter_blocking:
+                candidate_df = candidate_df[
+                    candidate_df[f"__first_letter_{col2}"]
+                    == row[f"__first_letter_{col1}"]
+                ]
+            if first_word_blocking:
+                candidate_df = candidate_df[
+                    candidate_df[f"__first_word_{col2}"] == row[f"__first_word_{col1}"]
+                ]
+
         best_match_row, best_score = find_best_match(
             text1,
-            df2,
+            candidate_df,
             col2,
             score_func,
             norm_func,
