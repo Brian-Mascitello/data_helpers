@@ -3,6 +3,7 @@ from typing import Callable, Optional, Tuple, Union
 
 import pandas as pd
 from thefuzz import fuzz
+from tqdm import tqdm
 
 
 def normalize_text(
@@ -63,6 +64,7 @@ def find_best_match(
     score_func: Callable[[str, str], int],
     norm_func: Optional[Callable[[str], str]] = None,
     first_letter_blocking: bool = False,
+    first_word_blocking: bool = False,
 ) -> Tuple[Optional[pd.Series], int]:
     """
     Finds the best match for text1 in the provided DataFrame df2.
@@ -74,13 +76,13 @@ def find_best_match(
         score_func (Callable[[str, str], int]): Function to compute a matching score.
         norm_func (Optional[Callable[[str], str]]): Normalization function to apply to df2 text.
         first_letter_blocking (bool): If True, only considers candidates starting with the same letter as text1.
+        first_word_blocking (bool): If True, only considers candidates whose first word matches that of text1.
 
     Returns:
         Tuple[Optional[pd.Series], int]: The best matching row from df2 and its score.
     """
     # Ensure text1 is a string
     text1 = "" if pd.isna(text1) else str(text1)
-
     best_score = -1
     best_match_row = None
 
@@ -91,6 +93,12 @@ def find_best_match(
 
         if first_letter_blocking:
             if not text1 or not text2 or text1[0] != text2[0]:
+                continue
+
+        if first_word_blocking:
+            first_word1 = text1.split()[0] if text1.strip() != "" else ""
+            first_word2 = text2.split()[0] if text2.strip() != "" else ""
+            if first_word1 != first_word2:
                 continue
 
         score = score_func(text1, text2)
@@ -109,11 +117,12 @@ def join_best_match(
     score_func: Callable[[str, str], int] = None,
     normalize: Union[bool, dict, Callable[[str], str]] = False,
     first_letter_blocking: bool = False,
+    first_word_blocking: bool = False,
     match_suffix: str = "_match",
 ) -> pd.DataFrame:
     """
     Joins two DataFrames based on the best fuzzy match of the specified string columns,
-    with optional normalization and first letter blocking.
+    with optional normalization, first letter blocking, and first word blocking.
 
     This function returns a new DataFrame that contains:
       - All original columns from df1,
@@ -133,6 +142,8 @@ def join_best_match(
             - If dict, passes it as keyword arguments to normalize_text.
             - If callable, uses the provided function.
         first_letter_blocking (bool): If True, only candidate rows from df2 with the same first letter
+            (after normalization if applied) as df1 are considered.
+        first_word_blocking (bool): If True, only candidate rows from df2 with the same first word
             (after normalization if applied) as df1 are considered.
         match_suffix (str): Suffix to append to the df2 column names in the output (default: "_match").
 
@@ -156,16 +167,21 @@ def join_best_match(
 
     result_rows = []
 
-    # Iterate over each row in df1 and find best match in df2.
-    for _, row in df1.iterrows():
+    # Iterate over each row in df1 with a progress bar.
+    for _, row in tqdm(df1.iterrows(), total=len(df1), desc="Matching rows"):
         text1_orig = row[col1]
         text1 = norm_func(text1_orig) if norm_func else text1_orig
 
         best_match_row, best_score = find_best_match(
-            text1, df2, col2, score_func, norm_func, first_letter_blocking
+            text1,
+            df2,
+            col2,
+            score_func,
+            norm_func,
+            first_letter_blocking,
+            first_word_blocking,
         )
 
-        # Start with all df1 columns.
         result = row.to_dict()
         result["best_match_score"] = best_score
 
@@ -200,14 +216,14 @@ def main() -> None:
     df1 = pd.DataFrame(data1)
     df2 = pd.DataFrame(data2)
 
-    # Perform a fuzzy join with first letter blocking enabled.
     result = join_best_match(
         df1,
         df2,
         col1="col1",
         col2="col2",
         first_letter_blocking=True,
-        match_suffix="_match",  # This will make df2 columns like "col2_match", "other_info_match"
+        first_word_blocking=True,
+        match_suffix="_match",
     )
 
     print("Joined DataFrame:")
