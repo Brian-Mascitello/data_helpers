@@ -40,7 +40,6 @@ def normalize_text(
         if allowed == "alnum":
             # Keep only alphanumeric characters and spaces.
             text = re.sub(r"[^a-zA-Z0-9\s]", " ", text)
-
         elif allowed == "alpha":
             # Keep only alphabetic characters and spaces.
             text = re.sub(r"[^a-zA-Z\s]", " ", text)
@@ -79,12 +78,16 @@ def find_best_match(
     Returns:
         Tuple[Optional[pd.Series], int]: The best matching row from df2 and its score.
     """
+    # Ensure text1 is a string
+    text1 = "" if pd.isna(text1) else str(text1)
+
     best_score = -1
     best_match_row = None
 
     for _, candidate in df2.iterrows():
         text2_orig = candidate[col2]
         text2 = norm_func(text2_orig) if norm_func else text2_orig
+        text2 = "" if pd.isna(text2) else str(text2)
 
         if first_letter_blocking:
             if not text1 or not text2 or text1[0] != text2[0]:
