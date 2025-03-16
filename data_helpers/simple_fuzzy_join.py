@@ -99,7 +99,7 @@ def find_best_match(
             if f"__first_letter_{col2}" in candidate:
                 letter2 = candidate[f"__first_letter_{col2}"]
             else:
-                letter2 = text2[0] if text2 else ""
+                letter2 = str(text2)[0] if text2 and len(str(text2)) > 0 else ""
             if not text1 or not text2 or text1[0] != letter2:
                 continue
 
@@ -107,8 +107,8 @@ def find_best_match(
             if f"__first_word_{col2}" in candidate:
                 word2 = candidate[f"__first_word_{col2}"]
             else:
-                word2 = text2.split()[0] if text2.split() else ""
-            word1 = text1.split()[0] if text1.split() else ""
+                word2 = str(text2).split()[0] if str(text2).split() else ""
+            word1 = str(text1).split()[0] if str(text1).split() else ""
             if word1 != word2:
                 continue
 
@@ -178,7 +178,7 @@ def join_best_match(
         else:
             norm_func = normalize_text
 
-    # If caching is beneficial (for normalization or blocking), add helper columns.
+    # Enable caching if any normalization or blocking is enabled.
     cache_enabled = bool(normalize or first_letter_blocking or first_word_blocking)
     if cache_enabled:
         # Create normalized columns.
@@ -187,18 +187,22 @@ def join_best_match(
         # Create first letter columns if needed.
         if first_letter_blocking:
             df1[f"__first_letter_{col1}"] = df1[f"__norm_{col1}"].apply(
-                lambda x: x[0] if x else ""
+                lambda x: str(x)[0] if pd.notna(x) and len(str(x)) > 0 else ""
             )
             df2[f"__first_letter_{col2}"] = df2[f"__norm_{col2}"].apply(
-                lambda x: x[0] if x else ""
+                lambda x: str(x)[0] if pd.notna(x) and len(str(x)) > 0 else ""
             )
         # Create first word columns if needed.
         if first_word_blocking:
             df1[f"__first_word_{col1}"] = df1[f"__norm_{col1}"].apply(
-                lambda x: x.split()[0] if x.split() else ""
+                lambda x: (
+                    str(x).split()[0] if pd.notna(x) and len(str(x).split()) > 0 else ""
+                )
             )
             df2[f"__first_word_{col2}"] = df2[f"__norm_{col2}"].apply(
-                lambda x: x.split()[0] if x.split() else ""
+                lambda x: (
+                    str(x).split()[0] if pd.notna(x) and len(str(x).split()) > 0 else ""
+                )
             )
 
     result_rows = []
