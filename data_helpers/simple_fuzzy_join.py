@@ -95,21 +95,19 @@ def find_best_match(
             text2 = norm_func(text2_orig) if norm_func else text2_orig
         text2 = "" if pd.isna(text2) else str(text2)
 
-        # Since we pre-filtered, the blocking conditions should mostly pass,
-        # but we keep them as a fallback.
         if first_letter_blocking:
-            letter2 = candidate.get(
-                f"__first_letter_{col2}",
-                str(text2)[0] if text2 and len(str(text2)) > 0 else "",
-            )
+            if f"__first_letter_{col2}" in candidate:
+                letter2 = candidate[f"__first_letter_{col2}"]
+            else:
+                letter2 = str(text2)[0] if text2 and len(str(text2)) > 0 else ""
             if not text1 or not text2 or text1[0] != letter2:
                 continue
 
         if first_word_blocking:
-            word2 = candidate.get(
-                f"__first_word_{col2}",
-                str(text2).split()[0] if str(text2).split() else "",
-            )
+            if f"__first_word_{col2}" in candidate:
+                word2 = candidate[f"__first_word_{col2}"]
+            else:
+                word2 = str(text2).split()[0] if str(text2).split() else ""
             word1 = str(text1).split()[0] if str(text1).split() else ""
             if word1 != word2:
                 continue
@@ -133,6 +131,7 @@ def join_best_match(
     first_word_blocking: bool = False,
     match_suffix: str = "_match",
     remove_cache: bool = True,
+    score_threshold: int = 0,  # New parameter: rows with best_match_score below this will be dropped.
 ) -> pd.DataFrame:
     """
     Joins two DataFrames based on the best fuzzy match of the specified string columns,
@@ -142,6 +141,7 @@ def join_best_match(
       - All original columns from df1,
       - A 'best_match_score' column,
       - All columns from the best matching row in df2, with their names appended by the specified suffix.
+      Rows with a best_match_score below the score_threshold are omitted.
 
     Parameters:
         df1 (pd.DataFrame): The first DataFrame.
@@ -161,16 +161,15 @@ def join_best_match(
             (after normalization if applied) as df1 are considered.
         match_suffix (str): Suffix to append to the df2 column names in the output (default: "_match").
         remove_cache (bool): If True, remove caching helper columns from the final output.
+        score_threshold (int): Only include rows with a best_match_score equal to or above this value.
 
     Returns:
-        pd.DataFrame: A DataFrame with all df1 rows, the best match from df2 (columns renamed with the suffix),
-                    and the best_match_score.
+        pd.DataFrame: A DataFrame with all df1 rows (filtered by score_threshold), the best match from df2
+                    (columns renamed with the suffix), and the best_match_score.
     """
-    # Use fuzz.ratio as default scoring function if not provided.
     if score_func is None:
         score_func = lambda a, b: fuzz.ratio(str(a), str(b))
 
-    # Set up normalization function if normalization is enabled.
     norm_func = None
     if normalize:
         if callable(normalize):
@@ -255,6 +254,10 @@ def join_best_match(
 
     result_df = pd.DataFrame(result_rows)
 
+    # Filter rows based on score_threshold.
+    if score_threshold > 0:
+        result_df = result_df[result_df["best_match_score"] >= score_threshold]
+
     # Remove caching columns if requested.
     if remove_cache:
         cache_cols = [col for col in result_df.columns if col.startswith("__")]
@@ -290,6 +293,7 @@ def main() -> None:
         first_word_blocking=True,
         match_suffix="_match",
         remove_cache=True,
+        score_threshold=50,
     )
 
     print("Joined DataFrame:")
