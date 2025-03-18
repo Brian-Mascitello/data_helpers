@@ -131,7 +131,7 @@ def join_best_match(
     first_word_blocking: bool = False,
     match_suffix: str = "_match",
     remove_cache: bool = True,
-    score_threshold: int = 0,  # New parameter: rows with best_match_score below this will be dropped.
+    score_threshold: int = 0,  # Rows with best_match_score below this value will be marked as unmatched.
 ) -> pd.DataFrame:
     """
     Joins two DataFrames based on the best fuzzy match of the specified string columns,
@@ -141,7 +141,7 @@ def join_best_match(
       - All original columns from df1,
       - A 'best_match_score' column,
       - All columns from the best matching row in df2, with their names appended by the specified suffix.
-      Rows with a best_match_score below the score_threshold are omitted.
+      For rows with a best_match_score below the score_threshold, the df2 match columns are set to None.
 
     Parameters:
         df1 (pd.DataFrame): The first DataFrame.
@@ -161,11 +161,12 @@ def join_best_match(
             (after normalization if applied) as df1 are considered.
         match_suffix (str): Suffix to append to the df2 column names in the output (default: "_match").
         remove_cache (bool): If True, remove caching helper columns from the final output.
-        score_threshold (int): Only include rows with a best_match_score equal to or above this value.
+        score_threshold (int): Instead of filtering out low-scoring rows, the df2 match columns are marked as unmatched.
 
     Returns:
-        pd.DataFrame: A DataFrame with all df1 rows (filtered by score_threshold), the best match from df2
-                    (columns renamed with the suffix), and the best_match_score.
+        pd.DataFrame: A DataFrame with all df1 rows, the best match from df2 (columns renamed with the suffix),
+                    and the best_match_score. For rows with a score below score_threshold,
+                    the df2 match columns will be None.
     """
     if score_func is None:
         score_func = lambda a, b: fuzz.ratio(str(a), str(b))
@@ -254,9 +255,12 @@ def join_best_match(
 
     result_df = pd.DataFrame(result_rows)
 
-    # Filter rows based on score_threshold.
+    # Instead of filtering out low-scoring rows, mark low-scoring matches as unmatched.
     if score_threshold > 0:
-        result_df = result_df[result_df["best_match_score"] >= score_threshold]
+        for col in df2.columns:
+            result_df.loc[
+                result_df["best_match_score"] < score_threshold, f"{col}{match_suffix}"
+            ] = None
 
     # Remove caching columns if requested.
     if remove_cache:
@@ -284,21 +288,56 @@ def main() -> None:
     df1 = pd.DataFrame(data1)
     df2 = pd.DataFrame(data2)
 
-    result = join_best_match(
+    # First join: join df1 and df2 with normalization enabled.
+    result_df = join_best_match(
         df1,
         df2,
         col1="col1",
         col2="col2",
+        normalize=True,
         first_letter_blocking=True,
         first_word_blocking=True,
         match_suffix="_match",
         remove_cache=True,
-        score_threshold=50,
+        score_threshold=70,
     )
+    result_df = result_df.rename(columns={"best_match_score": "best_match_score_1"})
 
-    print("Joined DataFrame:")
-    print(result)
-    result.to_csv("result.csv", index=False)
+    print("Joined DataFrame (df1 joined with df2):")
+    print(result_df)
+    result_df.to_csv("result.csv", index=False)
+
+    # Create a third DataFrame, df3.
+    data3 = {
+        "col3": [
+            "apple turnover",
+            "banana fritter",
+            "chocolate brownie",
+            "vanilla custard",
+        ],
+        "additional_info": ["crispy", "sweet", "rich", "creamy"],
+    }
+    df3 = pd.DataFrame(data3)
+
+    # Second join: join the current result_df with df3.
+    # Here, we use result_df's "col1" column to match against df3's "col3" column.
+    final_result_df = join_best_match(
+        result_df,
+        df3,
+        col1="col1",
+        col2="col3",
+        normalize=True,
+        first_letter_blocking=True,
+        first_word_blocking=True,
+        match_suffix="_match2",
+        remove_cache=True,
+        score_threshold=70,
+    )
+    final_result_df = final_result_df.rename(columns={"best_match_score": "best_match_score_2"})
+
+    print("Final Joined DataFrame (result_df joined with df3):")
+    print(final_result_df)
+    final_result_df.to_csv("final_result.csv", index=False)
 
 
 if __name__ == "__main__":
