@@ -257,10 +257,10 @@ def join_best_match(
 
     # Instead of filtering out low-scoring rows, mark low-scoring matches as unmatched.
     if score_threshold > 0:
+        condition = result_df["best_match_score"] < score_threshold
+        result_df.loc[condition, "best_match_score"] = -1
         for col in df2.columns:
-            result_df.loc[
-                result_df["best_match_score"] < score_threshold, f"{col}{match_suffix}"
-            ] = None
+            result_df.loc[condition, f"{col}{match_suffix}"] = None
 
     # Remove caching columns if requested.
     if remove_cache:
@@ -333,7 +333,9 @@ def main() -> None:
         remove_cache=True,
         score_threshold=70,
     )
-    final_result_df = final_result_df.rename(columns={"best_match_score": "best_match_score_2"})
+    final_result_df = final_result_df.rename(
+        columns={"best_match_score": "best_match_score_2"}
+    )
 
     print("Final Joined DataFrame (result_df joined with df3):")
     print(final_result_df)
