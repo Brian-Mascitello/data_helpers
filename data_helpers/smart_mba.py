@@ -43,7 +43,7 @@ def prepare_filtered_transactions(
         # Set-intersection mask.
         include_set = set(include_items)
         mask = grouped[item_col].apply(lambda items: bool(set(items) & include_set))
-        grouped = grouped[mask]
+        grouped = grouped[mask].copy()
 
     if min_items_in_transaction > 1:
         grouped = grouped[grouped[item_col].apply(lambda x: len(set(x)) >= min_items_in_transaction)]
@@ -62,7 +62,8 @@ def run_filtered_rules(
     min_support: float = 0.02,
     min_confidence: float = 0.5,
     algorithm: str = "apriori",
-    max_len: int = 3
+    max_len: int = 3,
+    only_single_antecedent: bool = True
 ) -> DataFrame:
     """
     Runs Apriori or FP-Growth and filters rules to include only those with specified antecedents.
@@ -76,6 +77,7 @@ def run_filtered_rules(
         min_confidence: Minimum confidence threshold for rule generation.
         algorithm: 'apriori' or 'fpgrowth' to choose the mining method.
         max_len: Maximum size of itemsets to consider during mining.
+        only_single_antecedent: If True, only keep rules where LHS contains exactly one item.
 
     Returns:
         Dataframe of association rules with support, confidence, lift, and frequency.
@@ -90,7 +92,12 @@ def run_filtered_rules(
     rules = association_rules(frequent, metric='confidence', min_threshold=min_confidence)
 
     if antecedents:
-        rules = rules[rules['antecedents'].apply(lambda x: any(a in x for a in antecedents))]
+        if only_single_antecedent:
+            rules = rules[
+                rules['antecedents'].apply(lambda x: len(x) == 1 and any(a in x for a in antecedents))
+            ]
+        else:
+            rules = rules[rules['antecedents'].apply(lambda x: any(a in x for a in antecedents))]
 
     rules['frequency'] = rules['support'] * len(df_encoded)
 
@@ -110,6 +117,7 @@ def run_configurable_scenarios(
     min_items_in_transaction: int = 2,
     algorithm: str = "apriori",
     max_len: int = 3,
+    only_single_antecedent: bool = True,
     human_readable: bool = True,
     output_dir: Union[str, Path] = 'mb_output'
 ) -> Dict[str, DataFrame]:
@@ -135,7 +143,8 @@ def run_configurable_scenarios(
         min_items_in_transaction: Filter out transactions smaller than this.
         algorithm: 'apriori' or 'fpgrowth' for mining.
         max_len: Maximum size of itemsets to consider during mining.
-        human_readable: Changes frozensets to sorted lists.
+        only_single_antecedent: If True, only keep rules where LHS contains exactly one item.
+        human_readable: Changes frozensets to comma-separated strings.
         output_dir: Folder to write the CSV outputs to.
 
     Returns:
@@ -174,31 +183,35 @@ def run_configurable_scenarios(
             min_support=min_support,
             min_confidence=min_confidence,
             algorithm=algorithm,
-            max_len=max_len
+            max_len=max_len,
+            only_single_antecedent=only_single_antecedent
         )
-        print(f"  Rules generated: {len(rules)}")
+        
+        if rules.empty:
+            print("  No rules to export. Skipping this scenario.")
 
-        # Convert to human-readable if desired
-        if human_readable and not rules.empty:
-            rules['antecedents_str'] = rules['antecedents'].apply(lambda x: ', '.join(sorted(x)))
-            rules['consequents_str'] = rules['consequents'].apply(lambda x: ', '.join(sorted(x)))
-            export_columns = ['antecedents_str', 'consequents_str', 'support', 'confidence', 'lift', 'frequency']
         else:
-            export_columns = ['antecedents', 'consequents', 'support', 'confidence', 'lift', 'frequency']
+            print(f"  Rules generated: {len(rules)}")
+            # Convert to human-readable if desired
+            if human_readable:
+                rules['antecedents_str'] = rules['antecedents'].apply(lambda x: ', '.join(sorted(x)))
+                rules['consequents_str'] = rules['consequents'].apply(lambda x: ', '.join(sorted(x)))
+                export_columns = ['antecedents_str', 'consequents_str', 'support', 'confidence', 'lift', 'frequency']
+            else:
+                export_columns = ['antecedents', 'consequents', 'support', 'confidence', 'lift', 'frequency']
 
-        # Sort by key metrics
-        rules = rules.sort_values(by=['lift', 'confidence', 'frequency'], ascending=[False, False, False])
+            # Sort by key metrics
+            rules = rules.sort_values(by=['lift', 'confidence', 'frequency'], ascending=[False, False, False])
 
-        # Export
-        key = f"{group_by.lower()}_{item_col.lower()}_{algorithm.lower()}"
-        file_path = output_path / f"{key}_rules.csv"
-        rules.to_csv(file_path, index=False, columns=export_columns)
-        print(f"  Rules saved to: {file_path}")
+            # Export
+            key = f"{group_by.lower()}_{item_col.lower()}_{algorithm.lower()}"
+            file_path = output_path / f"{key}_rules.csv"
+            rules.to_csv(file_path, index=False, columns=export_columns)
+            print(f"  Rules saved to: {file_path}")
 
-        results[key] = rules
+            results[key] = rules
 
     return results
-
 
 
 def main() -> None:
@@ -237,6 +250,7 @@ def main() -> None:
         min_items_in_transaction=2,
         algorithm=algorithm,
         max_len=3,
+        only_single_antecedent=True,
         human_readable=True,
         output_dir="mb_output"
     )
@@ -248,7 +262,6 @@ def main() -> None:
             print(top_rules.to_string(index=False))
         else:
             print(f"No rules found for scenario: {key}")
-
 
 
 if __name__ == "__main__":
