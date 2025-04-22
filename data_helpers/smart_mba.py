@@ -148,6 +148,10 @@ def run_configurable_scenarios(
     results: Dict[str, DataFrame] = {}
 
     for group_by, item_col, filter_items in tqdm(scenarios, desc="Running MB scenarios", leave=True):
+        scenario_name = f"{group_by} + {item_col}"
+        print(f"\nProcessing scenario: {scenario_name}")
+
+        print("  Preparing transactions...")
         df_encoded = prepare_filtered_transactions(
             df=df,
             group_by_col=group_by,
@@ -155,7 +159,9 @@ def run_configurable_scenarios(
             include_items=filter_items,
             min_items_in_transaction=min_items_in_transaction
         )
+        print(f"  Transactions after filtering: {len(df_encoded)}")
 
+        print("  Mining rules...")
         rules = run_filtered_rules(
             df_encoded=df_encoded,
             antecedents=filter_items,
@@ -163,10 +169,13 @@ def run_configurable_scenarios(
             min_confidence=min_confidence,
             algorithm=algorithm
         )
+        print(f"  Rules generated: {len(rules)}")
 
         key = f"{group_by.lower()}_{item_col.lower()}_{algorithm.lower()}"
         file_path = output_path / f"{key}_rules.csv"
         rules.to_csv(file_path, index=False)
+        print(f"  Rules saved to: {file_path}")
+
         results[key] = rules
 
     return results
