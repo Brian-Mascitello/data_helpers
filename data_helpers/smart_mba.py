@@ -110,6 +110,7 @@ def run_configurable_scenarios(
     min_items_in_transaction: int = 2,
     algorithm: str = "apriori",
     max_len: int = 3,
+    human_readable: bool = True,
     output_dir: Union[str, Path] = 'mb_output'
 ) -> Dict[str, DataFrame]:
     """
@@ -119,7 +120,7 @@ def run_configurable_scenarios(
     - Order + ProductName
     - Order + ProductEdition
 
-    Outputs results to CSV and returns the rules as a dictionary of DataFrames.
+    Exports results to CSV and returns rule DataFrames.
 
     Args:
         df: The full input dataframe containing customer, order, and product info.
@@ -134,6 +135,7 @@ def run_configurable_scenarios(
         min_items_in_transaction: Filter out transactions smaller than this.
         algorithm: 'apriori' or 'fpgrowth' for mining.
         max_len: Maximum size of itemsets to consider during mining.
+        human_readable: Changes frozensets to sorted lists.
         output_dir: Folder to write the CSV outputs to.
 
     Returns:
@@ -176,14 +178,27 @@ def run_configurable_scenarios(
         )
         print(f"  Rules generated: {len(rules)}")
 
+        # Convert to human-readable if desired
+        if human_readable and not rules.empty:
+            rules['antecedents_str'] = rules['antecedents'].apply(lambda x: ', '.join(sorted(x)))
+            rules['consequents_str'] = rules['consequents'].apply(lambda x: ', '.join(sorted(x)))
+            export_columns = ['antecedents_str', 'consequents_str', 'support', 'confidence', 'lift', 'frequency']
+        else:
+            export_columns = ['antecedents', 'consequents', 'support', 'confidence', 'lift', 'frequency']
+
+        # Sort by key metrics
+        rules = rules.sort_values(by=['lift', 'confidence', 'frequency'], ascending=[False, False, False])
+
+        # Export
         key = f"{group_by.lower()}_{item_col.lower()}_{algorithm.lower()}"
         file_path = output_path / f"{key}_rules.csv"
-        rules.to_csv(file_path, index=False)
+        rules.to_csv(file_path, index=False, columns=export_columns)
         print(f"  Rules saved to: {file_path}")
 
         results[key] = rules
 
     return results
+
 
 
 def main() -> None:
@@ -222,6 +237,7 @@ def main() -> None:
         min_items_in_transaction=2,
         algorithm=algorithm,
         max_len=3,
+        human_readable=True,
         output_dir="mb_output"
     )
 
