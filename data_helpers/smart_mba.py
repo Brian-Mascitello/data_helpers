@@ -15,6 +15,23 @@ def prepare_filtered_transactions(
     include_items: List[str],
     min_items_in_transaction: int = 2
 ) -> DataFrame:
+    """
+    Prepares a one-hot encoded dataframe of transactions for frequent itemset mining.
+
+    Filters transactions based on:
+    - A target list of items (include_items)
+    - A minimum number of distinct items in a transaction (min_items_in_transaction)
+
+    Args:
+        df: Raw input dataframe containing individual item rows.
+        group_by_col: Column to group by for transactions (e.g. CustomerID or OrderID).
+        item_col: Column containing the item to analyze (e.g. ProductName or ProductEdition).
+        include_items: List of items to filter for (only transactions containing at least one are kept).
+        min_items_in_transaction: Minimum number of items a transaction must contain to be included.
+
+    Returns:
+        One-hot encoded dataframe for use in Apriori or FP-Growth.
+    """
     grouped = df.groupby(group_by_col)[item_col].apply(list).reset_index()
 
     if include_items:
@@ -41,7 +58,18 @@ def run_filtered_rules(
 ) -> DataFrame:
     """
     Runs Apriori or FP-Growth and filters rules to include only those with specified antecedents.
-    Adds frequency as a column.
+
+    Adds a 'frequency' column to show the raw count of rule occurrences.
+
+    Args:
+        df_encoded: One-hot encoded transaction dataframe.
+        antecedents: List of items to match in the rule's antecedent (LHS).
+        min_support: Minimum support threshold for frequent itemsets.
+        min_confidence: Minimum confidence threshold for rule generation.
+        algorithm: 'apriori' or 'fpgrowth' to choose the mining method.
+
+    Returns:
+        Dataframe of association rules with support, confidence, lift, and frequency.
     """
     if algorithm.lower() == "fpgrowth":
         frequent = fpgrowth(df_encoded, min_support=min_support, use_colnames=True)
@@ -74,6 +102,32 @@ def run_configurable_scenarios(
     algorithm: str = "apriori",
     output_dir: Union[str, Path] = 'mb_output'
 ) -> Dict[str, DataFrame]:
+    """
+    Runs market basket analysis for 4 different scenarios:
+    - Customer + ProductName
+    - Customer + ProductEdition
+    - Order + ProductName
+    - Order + ProductEdition
+
+    Outputs results to CSV and returns the rules as a dictionary of DataFrames.
+
+    Args:
+        df: The full input dataframe containing customer, order, and product info.
+        account_col: Column name representing the customer (e.g. 'CustomerID').
+        order_col: Column name representing the order (e.g. 'OrderID').
+        product_name_col: Column with general product names.
+        product_names_to_include: List of product names to focus the analysis on.
+        edition_col: Column with product edition identifiers.
+        editions_to_include: List of editions to focus the analysis on.
+        min_support: Minimum support threshold.
+        min_confidence: Minimum confidence threshold.
+        min_items_in_transaction: Filter out transactions smaller than this.
+        algorithm: 'apriori' or 'fpgrowth' for mining.
+        output_dir: Folder to write the CSV outputs to.
+
+    Returns:
+        Dictionary of rule DataFrames, keyed by scenario.
+    """
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
@@ -112,6 +166,10 @@ def run_configurable_scenarios(
 
 
 def main() -> None:
+    """
+    Example entry point to run the full pipeline.
+    Loads a CSV, defines config, and runs analysis.
+    """
     import pandas as pd
 
     # Load your data
@@ -144,6 +202,11 @@ def main() -> None:
         algorithm=algorithm,
         output_dir="mb_output"
     )
+
+    # Display top rules from each scenario
+    for key, rules_df in results.items():
+        top_rules = rules_df.sort_values(by="lift", ascending=False).head(5)
+        print(top_rules.to_string(index=False))
 
 
 if __name__ == "__main__":
