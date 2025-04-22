@@ -133,6 +133,7 @@ def run_configurable_scenarios(
         min_confidence: Minimum confidence threshold.
         min_items_in_transaction: Filter out transactions smaller than this.
         algorithm: 'apriori' or 'fpgrowth' for mining.
+        max_len: Maximum size of itemsets to consider during mining.
         output_dir: Folder to write the CSV outputs to.
 
     Returns:
