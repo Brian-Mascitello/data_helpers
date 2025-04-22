@@ -249,6 +249,19 @@ def run_configurable_scenarios(
     return results
 
 
+def save_all_to_excel(results: Dict[str, DataFrame], output_path: Union[str, Path], filename: str = "all_rules.xlsx") -> None:
+    """
+    Save all rule DataFrames into a single Excel workbook with one sheet per scenario.
+    """
+    excel_path = Path(output_path) / filename
+    with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
+        for sheet_name, df in results.items():
+            # Truncate sheet name if necessary (Excel max sheet name length = 31)
+            safe_name = sheet_name[:31]
+            df.to_excel(writer, sheet_name=safe_name, index=False)
+    print(f"\nAll rules saved to single Excel file: {excel_path}")
+
+
 def main() -> None:
     """
     Example entry point to run the full pipeline.
@@ -290,6 +303,8 @@ def main() -> None:
         filter_side="both",  # or "antecedent", "consequent"
         output_dir="mb_output"
     )
+
+    save_all_to_excel(results, output_path="mb_output")
 
     # Display top rules from each scenario
     for key, rules_df in results.items():
