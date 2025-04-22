@@ -82,6 +82,7 @@ def run_filtered_rules(
     Returns:
         Dataframe of association rules with support, confidence, lift, and frequency.
     """
+    print("  Generating frequent itemsets...")
     if algorithm.lower() == "fpgrowth":
         frequent = fpgrowth(df_encoded, min_support=min_support, use_colnames=True, max_len=max_len)
     elif algorithm.lower() == "apriori":
@@ -89,15 +90,19 @@ def run_filtered_rules(
     else:
         raise ValueError(f"Unsupported algorithm: {algorithm}. Choose 'apriori' or 'fpgrowth'.")
 
+    print("  Generating association rules...")
     rules = association_rules(frequent, metric='confidence', min_threshold=min_confidence)
 
     if antecedents:
+        print(f"  Rules before filtering: {len(rules)}")
         if only_single_antecedent:
             rules = rules[
-                rules['antecedents'].apply(lambda x: len(x) == 1 and any(a in x for a in antecedents))
+                rules['antecedents'].progress_apply(lambda x: len(x) == 1 and any(a in x for a in antecedents))
             ]
         else:
             rules = rules[rules['antecedents'].apply(lambda x: any(a in x for a in antecedents))]
+
+        print(f"  Rules after antecedent filtering: {len(rules)}")
 
     rules['frequency'] = rules['support'] * len(df_encoded)
 
