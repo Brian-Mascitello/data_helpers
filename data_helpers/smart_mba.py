@@ -35,14 +35,21 @@ def prepare_filtered_transactions(
     grouped = df.groupby(group_by_col)[item_col].apply(list).reset_index()
 
     if include_items:
-        grouped = grouped[grouped[item_col].apply(
-            lambda items: any(p in items for p in include_items)
-        )]
+        # Original
+        # grouped = grouped[grouped[item_col].apply(
+        #     lambda items: any(p in items for p in include_items)
+        # )]
+
+        # Set-intersection mask.
+        include_set = set(include_items)
+        mask = grouped[item_col].apply(lambda items: bool(set(items) & include_set))
+        grouped = grouped[mask]
 
     if min_items_in_transaction > 1:
         grouped = grouped[grouped[item_col].apply(lambda x: len(set(x)) >= min_items_in_transaction)]
 
-    transactions = grouped[item_col].tolist()
+    # transactions = grouped[item_col].tolist()
+    transactions = [list(set(items)) for items in grouped[item_col]]
     te = TransactionEncoder()
     te_ary = te.fit(transactions).transform(transactions)
     df_encoded = pd.DataFrame(te_ary, columns=te.columns_)
@@ -205,8 +212,12 @@ def main() -> None:
 
     # Display top rules from each scenario
     for key, rules_df in results.items():
-        top_rules = rules_df.sort_values(by="lift", ascending=False).head(5)
-        print(top_rules.to_string(index=False))
+        if not rules_df.empty:
+            top_rules = rules_df.sort_values(by="lift", ascending=False).head(5)
+            print(top_rules.to_string(index=False))
+        else:
+            print(f"No rules found for scenario: {key}")
+
 
 
 if __name__ == "__main__":
