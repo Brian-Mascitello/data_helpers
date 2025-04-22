@@ -61,7 +61,8 @@ def run_filtered_rules(
     antecedents: List[str],
     min_support: float = 0.02,
     min_confidence: float = 0.5,
-    algorithm: str = "apriori"
+    algorithm: str = "apriori",
+    max_len: int = 3
 ) -> DataFrame:
     """
     Runs Apriori or FP-Growth and filters rules to include only those with specified antecedents.
@@ -74,14 +75,15 @@ def run_filtered_rules(
         min_support: Minimum support threshold for frequent itemsets.
         min_confidence: Minimum confidence threshold for rule generation.
         algorithm: 'apriori' or 'fpgrowth' to choose the mining method.
+        max_len: Maximum size of itemsets to consider during mining.
 
     Returns:
         Dataframe of association rules with support, confidence, lift, and frequency.
     """
     if algorithm.lower() == "fpgrowth":
-        frequent = fpgrowth(df_encoded, min_support=min_support, use_colnames=True)
+        frequent = fpgrowth(df_encoded, min_support=min_support, use_colnames=True, max_len=max_len)
     elif algorithm.lower() == "apriori":
-        frequent = apriori(df_encoded, min_support=min_support, use_colnames=True)
+        frequent = apriori(df_encoded, min_support=min_support, use_colnames=True, max_len=max_len)
     else:
         raise ValueError(f"Unsupported algorithm: {algorithm}. Choose 'apriori' or 'fpgrowth'.")
 
@@ -107,6 +109,7 @@ def run_configurable_scenarios(
     min_confidence: float = 0.5,
     min_items_in_transaction: int = 2,
     algorithm: str = "apriori",
+    max_len: int = 3,
     output_dir: Union[str, Path] = 'mb_output'
 ) -> Dict[str, DataFrame]:
     """
@@ -167,7 +170,8 @@ def run_configurable_scenarios(
             antecedents=filter_items,
             min_support=min_support,
             min_confidence=min_confidence,
-            algorithm=algorithm
+            algorithm=algorithm,
+            max_len=max_len
         )
         print(f"  Rules generated: {len(rules)}")
 
@@ -216,6 +220,7 @@ def main() -> None:
         min_confidence=0.5,
         min_items_in_transaction=2,
         algorithm=algorithm,
+        max_len=3,
         output_dir="mb_output"
     )
 
