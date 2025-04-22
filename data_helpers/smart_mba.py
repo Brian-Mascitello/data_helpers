@@ -58,12 +58,13 @@ def prepare_filtered_transactions(
 
 def run_filtered_rules(
     df_encoded: DataFrame,
-    antecedents: List[str],
+    items_to_include: List[str],
     min_support: float = 0.02,
     min_confidence: float = 0.5,
     algorithm: str = "apriori",
     max_len: int = 3,
-    only_single_antecedent: bool = True
+    only_single_antecedent: bool = True,
+    filter_side: str = "both"
 ) -> DataFrame:
     """
     Runs Apriori or FP-Growth and filters rules to include only those with specified antecedents.
@@ -72,12 +73,17 @@ def run_filtered_rules(
 
     Args:
         df_encoded: One-hot encoded transaction dataframe.
-        antecedents: List of items to match in the rule's antecedent (LHS).
+        items_to_include: List of items to match in the rule's antecedent (LHS).
         min_support: Minimum support threshold for frequent itemsets.
         min_confidence: Minimum confidence threshold for rule generation.
         algorithm: 'apriori' or 'fpgrowth' to choose the mining method.
         max_len: Maximum size of itemsets to consider during mining.
         only_single_antecedent: If True, only keep rules where LHS contains exactly one item.
+        filter_side: str = "both"
+            Which side of the rule to filter on. Options are:
+            - "antecedent": only filter LHS
+            - "consequent": only filter RHS
+            - "both": either side may contain the item(s)
 
     Returns:
         Dataframe of association rules with support, confidence, lift, and frequency.
@@ -93,16 +99,33 @@ def run_filtered_rules(
     print("  Generating association rules...")
     rules = association_rules(frequent, metric='confidence', min_threshold=min_confidence)
 
-    if antecedents:
+    if items_to_include:
         print(f"  Rules before filtering: {len(rules)}")
-        if only_single_antecedent:
-            rules = rules[
-                rules['antecedents'].progress_apply(lambda x: len(x) == 1 and any(a in x for a in antecedents))
-            ]
-        else:
-            rules = rules[rules['antecedents'].apply(lambda x: any(a in x for a in antecedents))]
+        if filter_side not in {"antecedent", "consequent", "both"}:
+            raise ValueError("filter_side must be 'antecedent', 'consequent', or 'both'")
 
-        print(f"  Rules after antecedent filtering: {len(rules)}")
+        if only_single_antecedent:
+            if filter_side == "antecedent":
+                rules = rules[rules['antecedents'].apply(lambda x: len(x) == 1 and any(a in x for a in items_to_include))]
+            elif filter_side == "consequent":
+                rules = rules[rules['consequents'].apply(lambda x: any(a in x for a in items_to_include))]
+            elif filter_side == "both":
+                rules = rules[
+                    rules['antecedents'].apply(lambda x: len(x) == 1 and any(a in x for a in items_to_include))
+                    | rules['consequents'].apply(lambda x: any(a in x for a in items_to_include))
+                ]
+        else:
+            if filter_side == "antecedent":
+                rules = rules[rules['antecedents'].apply(lambda x: any(a in x for a in items_to_include))]
+            elif filter_side == "consequent":
+                rules = rules[rules['consequents'].apply(lambda x: any(a in x for a in items_to_include))]
+            elif filter_side == "both":
+                rules = rules[
+                    rules['antecedents'].apply(lambda x: any(a in x for a in items_to_include))
+                    | rules['consequents'].apply(lambda x: any(a in x for a in items_to_include))
+                ]
+
+        print(f"  Rules after item filtering: {len(rules)}")
 
     rules['frequency'] = rules['support'] * len(df_encoded)
 
@@ -122,8 +145,9 @@ def run_configurable_scenarios(
     min_items_in_transaction: int = 2,
     algorithm: str = "apriori",
     max_len: int = 3,
-    only_single_antecedent: bool = True,
+    only_single_antecedent: bool = False,
     human_readable: bool = True,
+    filter_side: str = "both",
     output_dir: Union[str, Path] = 'mb_output'
 ) -> Dict[str, DataFrame]:
     """
@@ -150,6 +174,11 @@ def run_configurable_scenarios(
         max_len: Maximum size of itemsets to consider during mining.
         only_single_antecedent: If True, only keep rules where LHS contains exactly one item.
         human_readable: Changes frozensets to comma-separated strings.
+        filter_side: str = "both"
+            Which side of the rule to filter on. Options are:
+            - "antecedent": only filter LHS
+            - "consequent": only filter RHS
+            - "both": either side may contain the item(s)
         output_dir: Folder to write the CSV outputs to.
 
     Returns:
@@ -184,12 +213,13 @@ def run_configurable_scenarios(
         print("  Mining rules...")
         rules = run_filtered_rules(
             df_encoded=df_encoded,
-            antecedents=filter_items,
+            items_to_include=filter_items,
             min_support=min_support,
             min_confidence=min_confidence,
             algorithm=algorithm,
             max_len=max_len,
-            only_single_antecedent=only_single_antecedent
+            only_single_antecedent=only_single_antecedent,
+            filter_side=filter_side
         )
         
         if rules.empty:
@@ -250,13 +280,14 @@ def main() -> None:
         product_names_to_include=product_names,
         edition_col=edition_col,
         editions_to_include=editions,
-        min_support=0.02,
+        min_support=0.01,
         min_confidence=0.5,
         min_items_in_transaction=2,
         algorithm=algorithm,
         max_len=3,
-        only_single_antecedent=True,
+        only_single_antecedent=False,
         human_readable=True,
+        filter_side="both",  # or "antecedent", "consequent"
         output_dir="mb_output"
     )
 
