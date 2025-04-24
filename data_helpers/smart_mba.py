@@ -1,6 +1,8 @@
 from pathlib import Path
 from typing import Dict, List, Union
 
+import matplotlib.pyplot as plt
+import networkx as nx
 import pandas as pd
 from mlxtend.frequent_patterns import apriori, association_rules, fpgrowth
 from mlxtend.preprocessing import TransactionEncoder
@@ -8,12 +10,58 @@ from pandas import DataFrame
 from tqdm.auto import tqdm
 
 
+def save_rules_network_graph(
+    rules_df: pd.DataFrame, output_path: Path, key: str, max_rules: int = 100
+) -> None:
+    """
+    Build and save a directed network graph of the top `max_rules` association rules.
+    Nodes = individual items (products), edges = antecedent → consequent, edge width ∝ lift.
+    """
+    # 1) Select only the top rules by lift
+    top_rules = rules_df.sort_values("lift", ascending=False).head(max_rules)
+
+    # 2) Build the graph from that subset
+    G = nx.DiGraph()
+    for _, row in top_rules.iterrows():
+        ant = list(row["antecedents"])
+        cons = list(row["consequents"])
+        for a in ant:
+            for c in cons:
+                G.add_edge(a, c, weight=row["lift"])
+
+    if G.number_of_edges() == 0:
+        return  # nothing to draw
+
+    # 3) Layout and draw
+    pos = nx.spring_layout(G, k=0.5, iterations=50)
+    plt.figure(figsize=(10, 10))
+    nx.draw_networkx_nodes(G, pos, node_size=300)
+    edges = G.edges(data=True)
+    widths = [edata["weight"] * 2 for (_, _, edata) in edges]
+    nx.draw_networkx_edges(
+        G,
+        pos,
+        edgelist=[(u, v) for u, v, _ in edges],
+        width=widths,
+        arrowstyle="->",
+        arrowsize=10,
+    )
+    nx.draw_networkx_labels(G, pos, font_size=8)
+    plt.axis("off")
+    plt.tight_layout()
+
+    # 4) Save
+    png_path = output_path / f"{key}_network_top{max_rules}.png"
+    plt.savefig(str(png_path), format="PNG", dpi=300)
+    plt.close()
+
+
 def prepare_filtered_transactions(
     df: DataFrame,
     group_by_col: str,
     item_col: str,
     include_items: List[str],
-    min_items_in_transaction: int = 2
+    min_items_in_transaction: int = 2,
 ) -> DataFrame:
     """
     Prepares a one-hot encoded dataframe of transactions for frequent itemset mining.
@@ -34,19 +82,24 @@ def prepare_filtered_transactions(
     """
     grouped = df.groupby(group_by_col)[item_col].apply(list).reset_index()
 
-    if include_items:
-        # Original
-        # grouped = grouped[grouped[item_col].apply(
-        #     lambda items: any(p in items for p in include_items)
-        # )]
+    # After grouping but before any filtering:
+    if grouped.empty:
+        return pd.DataFrame()
 
+    if include_items:
         # Set-intersection mask.
         include_set = set(include_items)
         mask = grouped[item_col].apply(lambda items: bool(set(items) & include_set))
         grouped = grouped[mask].copy()
 
+        # If nothing matched your include_items, exit early:
+        if grouped.empty:
+            return pd.DataFrame()
+
     if min_items_in_transaction > 1:
-        grouped = grouped[grouped[item_col].apply(lambda x: len(set(x)) >= min_items_in_transaction)]
+        grouped = grouped[
+            grouped[item_col].apply(lambda x: len(set(x)) >= min_items_in_transaction)
+        ]
 
     # transactions = grouped[item_col].tolist()
     transactions = [list(set(items)) for items in grouped[item_col]]
@@ -64,7 +117,7 @@ def run_filtered_rules(
     algorithm: str = "apriori",
     max_len: int = 3,
     only_single_antecedent: bool = True,
-    filter_side: str = "both"
+    filter_side: str = "both",
 ) -> DataFrame:
     """
     Runs Apriori or FP-Growth and filters rules to include only those with specified antecedents.
@@ -90,46 +143,82 @@ def run_filtered_rules(
     """
     print("  Generating frequent itemsets...")
     if algorithm.lower() == "fpgrowth":
-        frequent = fpgrowth(df_encoded, min_support=min_support, use_colnames=True, max_len=max_len)
+        frequent = fpgrowth(
+            df_encoded, min_support=min_support, use_colnames=True, max_len=max_len
+        )
     elif algorithm.lower() == "apriori":
-        frequent = apriori(df_encoded, min_support=min_support, use_colnames=True, max_len=max_len)
+        frequent = apriori(
+            df_encoded, min_support=min_support, use_colnames=True, max_len=max_len
+        )
     else:
-        raise ValueError(f"Unsupported algorithm: {algorithm}. Choose 'apriori' or 'fpgrowth'.")
+        raise ValueError(
+            f"Unsupported algorithm: {algorithm}. Choose 'apriori' or 'fpgrowth'."
+        )
 
     print("  Generating association rules...")
-    rules = association_rules(frequent, metric='confidence', min_threshold=min_confidence)
+    rules = association_rules(
+        frequent, metric="confidence", min_threshold=min_confidence
+    )
 
     if items_to_include:
         print(f"  Rules before filtering: {len(rules)}")
         if filter_side not in {"antecedent", "consequent", "both"}:
-            raise ValueError("filter_side must be 'antecedent', 'consequent', or 'both'")
+            raise ValueError(
+                "filter_side must be 'antecedent', 'consequent', or 'both'"
+            )
 
         if only_single_antecedent:
             if filter_side == "antecedent":
-                rules = rules[rules['antecedents'].apply(lambda x: len(x) == 1 and any(a in x for a in items_to_include))]
+                rules = rules[
+                    rules["antecedents"].apply(
+                        lambda x: len(x) == 1 and any(a in x for a in items_to_include)
+                    )
+                ]
             elif filter_side == "consequent":
-                rules = rules[rules['consequents'].apply(lambda x: any(a in x for a in items_to_include))]
+                rules = rules[
+                    rules["consequents"].apply(
+                        lambda x: any(a in x for a in items_to_include)
+                    )
+                ]
             elif filter_side == "both":
                 rules = rules[
-                    rules['antecedents'].apply(lambda x: len(x) == 1 and any(a in x for a in items_to_include))
-                    | rules['consequents'].apply(lambda x: any(a in x for a in items_to_include))
+                    rules["antecedents"].apply(
+                        lambda x: len(x) == 1 and any(a in x for a in items_to_include)
+                    )
+                    | rules["consequents"].apply(
+                        lambda x: any(a in x for a in items_to_include)
+                    )
                 ]
         else:
             if filter_side == "antecedent":
-                rules = rules[rules['antecedents'].apply(lambda x: any(a in x for a in items_to_include))]
+                rules = rules[
+                    rules["antecedents"].apply(
+                        lambda x: any(a in x for a in items_to_include)
+                    )
+                ]
             elif filter_side == "consequent":
-                rules = rules[rules['consequents'].apply(lambda x: any(a in x for a in items_to_include))]
+                rules = rules[
+                    rules["consequents"].apply(
+                        lambda x: any(a in x for a in items_to_include)
+                    )
+                ]
             elif filter_side == "both":
                 rules = rules[
-                    rules['antecedents'].apply(lambda x: any(a in x for a in items_to_include))
-                    | rules['consequents'].apply(lambda x: any(a in x for a in items_to_include))
+                    rules["antecedents"].apply(
+                        lambda x: any(a in x for a in items_to_include)
+                    )
+                    | rules["consequents"].apply(
+                        lambda x: any(a in x for a in items_to_include)
+                    )
                 ]
 
         print(f"  Rules after item filtering: {len(rules)}")
 
-    rules['frequency'] = rules['support'] * len(df_encoded)
+    rules["frequency"] = rules["support"] * len(df_encoded)
 
-    return rules[['antecedents', 'consequents', 'support', 'confidence', 'lift', 'frequency']]
+    return rules[
+        ["antecedents", "consequents", "support", "confidence", "lift", "frequency"]
+    ]
 
 
 def run_configurable_scenarios(
@@ -148,7 +237,7 @@ def run_configurable_scenarios(
     only_single_antecedent: bool = False,
     human_readable: bool = True,
     filter_side: str = "both",
-    output_dir: Union[str, Path] = 'mb_output'
+    output_dir: Union[str, Path] = "mb_output",
 ) -> Dict[str, DataFrame]:
     """
     Runs market basket analysis for 4 different scenarios:
@@ -191,12 +280,14 @@ def run_configurable_scenarios(
         (account_col, product_name_col, product_names_to_include),
         (account_col, edition_col, editions_to_include),
         (order_col, product_name_col, product_names_to_include),
-        (order_col, edition_col, editions_to_include)
+        (order_col, edition_col, editions_to_include),
     ]
 
     results: Dict[str, DataFrame] = {}
 
-    for group_by, item_col, filter_items in tqdm(scenarios, desc="Running MB scenarios", leave=True):
+    for group_by, item_col, filter_items in tqdm(
+        scenarios, desc="Running MB scenarios", leave=True
+    ):
         scenario_name = f"{group_by} + {item_col}"
         print(f"\nProcessing scenario: {scenario_name}")
 
@@ -206,7 +297,7 @@ def run_configurable_scenarios(
             group_by_col=group_by,
             item_col=item_col,
             include_items=filter_items,
-            min_items_in_transaction=min_items_in_transaction
+            min_items_in_transaction=min_items_in_transaction,
         )
         print(f"  Transactions after filtering: {len(df_encoded)}")
 
@@ -219,9 +310,9 @@ def run_configurable_scenarios(
             algorithm=algorithm,
             max_len=max_len,
             only_single_antecedent=only_single_antecedent,
-            filter_side=filter_side
+            filter_side=filter_side,
         )
-        
+
         if rules.empty:
             print("  No rules to export. Skipping this scenario.")
 
@@ -229,14 +320,34 @@ def run_configurable_scenarios(
             print(f"  Rules generated: {len(rules)}")
             # Convert to human-readable if desired
             if human_readable:
-                rules['antecedents_str'] = rules['antecedents'].apply(lambda x: ', '.join(sorted(x)))
-                rules['consequents_str'] = rules['consequents'].apply(lambda x: ', '.join(sorted(x)))
-                export_columns = ['antecedents_str', 'consequents_str', 'support', 'confidence', 'lift', 'frequency']
+                rules["antecedents_str"] = rules["antecedents"].apply(
+                    lambda x: ", ".join(sorted(x))
+                )
+                rules["consequents_str"] = rules["consequents"].apply(
+                    lambda x: ", ".join(sorted(x))
+                )
+                export_columns = [
+                    "antecedents_str",
+                    "consequents_str",
+                    "support",
+                    "confidence",
+                    "lift",
+                    "frequency",
+                ]
             else:
-                export_columns = ['antecedents', 'consequents', 'support', 'confidence', 'lift', 'frequency']
+                export_columns = [
+                    "antecedents",
+                    "consequents",
+                    "support",
+                    "confidence",
+                    "lift",
+                    "frequency",
+                ]
 
             # Sort by key metrics
-            rules = rules.sort_values(by=['lift', 'confidence', 'frequency'], ascending=[False, False, False])
+            rules = rules.sort_values(
+                by=["lift", "confidence", "frequency"], ascending=[False, False, False]
+            )
 
             # Export
             key = f"{group_by.lower()}_{item_col.lower()}_{algorithm.lower()}"
@@ -246,15 +357,24 @@ def run_configurable_scenarios(
 
             results[key] = rules
 
+            save_rules_network_graph(rules, output_path, key, max_rules=100)
+            print(
+                f"  Top-100 rules network graph saved to: {output_path / f'{key}_network_top100.png'}"
+            )
+
     return results
 
 
-def save_all_to_excel(results: Dict[str, DataFrame], output_path: Union[str, Path], filename: str = "all_rules.xlsx") -> None:
+def save_all_to_excel(
+    results: Dict[str, DataFrame],
+    output_path: Union[str, Path],
+    filename: str = "all_rules.xlsx",
+) -> None:
     """
     Save all rule DataFrames into a single Excel workbook with one sheet per scenario.
     """
     excel_path = Path(output_path) / filename
-    with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
+    with pd.ExcelWriter(excel_path, engine="xlsxwriter") as writer:
         for sheet_name, df in results.items():
             # Truncate sheet name if necessary (Excel max sheet name length = 31)
             safe_name = sheet_name[:31]
@@ -301,7 +421,7 @@ def main() -> None:
         only_single_antecedent=False,
         human_readable=True,
         filter_side="both",  # or "antecedent", "consequent"
-        output_dir="mb_output"
+        output_dir="mb_output",
     )
 
     save_all_to_excel(results, output_path="mb_output")
