@@ -1,9 +1,12 @@
 __pycache__/
 *.csv
+*.gif
 *.png
 *.txt
 # Get-Content .gitignore | Sort-Object -Unique | Set-Content .gitignore
 # Run the previous command in Windows to sort and remove duplicates from .gitignore:
+CSV_Files/
+Image_Files/
 data_helpers/__pycache__/
 data_helpers/.vscode/settings.json
 data_helpers/sklearn-env/
@@ -15,3 +18,4 @@ scripts/testingmatching2.py
 venv/
 data_helpers/testing.py
 test_image*.png
+
